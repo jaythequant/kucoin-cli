@@ -14,6 +14,7 @@ setuptools.setup(
     url="https://github.com/jaythequant/kucoin-cli",
     project_urls={
         "Kucoin Client": "https://github.com/jaythequant/kucoin-cli",
+        "PyPi Distribution": "https://pypi.org/project/kucoin-cli/0.0.1/",
     },
     classifiers=[
         "Programming Language :: Python :: 3",
