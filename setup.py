@@ -5,7 +5,7 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setuptools.setup(
     name="kucoin-cli",
-    version="0.0.1",
+    version="0.0.4",
     author="James VanLandingham",
     author_email="jameslvanlandingham@gmail.com",
     description="Kucoin API and websocket client",
@@ -13,8 +13,8 @@ setuptools.setup(
     long_description_content_type="text/markdown",
     url="https://github.com/jaythequant/kucoin-cli",
     project_urls={
-        "Kucoin Client": "https://github.com/jaythequant/kucoin-cli",
-        "PyPi Distribution": "https://pypi.org/project/kucoin-cli/0.0.1/",
+        "Github Dist": "https://github.com/jaythequant/kucoin-cli",
+        "PyPi Dist": "https://pypi.org/project/kucoin-cli/0.0.1/"
     },
     classifiers=[
         "Programming Language :: Python :: 3",
