@@ -5,10 +5,11 @@ import pandas as pd
 import json
 import calendar
 from datetime import datetime
-from kucoincli.utils._helpers import _parse_date
-from kucoincli.utils.helpers import _parse_interval
-from progress.bar import Bar
+from utils._helpers import _parse_date
+from utils._helpers import _parse_interval
 import warnings
+import logging
+import sys
 
 
 class Client(object):
@@ -32,7 +33,6 @@ class Client(object):
         regular kucoin API and may only be obtained from the sandbox website and (2)
         that sandbox markets are completely seperate than kucoin's regular sites. It is
         recommended that you not use sandbox as the data is highly corrupted.
-    :param requests_params: Not yet implemented feature; please ignore for now
     """
 
     REST_API_URL = "https://api.kucoin.com"
@@ -54,15 +54,27 @@ class Client(object):
     ORDER_MARKET_STOP = "market_stop"
 
     def __init__(self, api_key="", api_secret="", api_passphrase="", sandbox=False, requests_params=None):
+
+        self.logger = logging.getLogger(__name__)
+
         self.API_KEY = api_key
         self.API_SECRET = api_secret
         self.API_PASSPHRASE = api_passphrase
+
         if sandbox:
             self.API_URL = self.SAND_BOX_URL
         else:
             self.API_URL = self.REST_API_URL
 
-        self._requests_params = requests_params
+        # Logging setup
+        logging.basicConfig(
+            level=logging.INFO,
+            format="%(asctime)s  %(funcName)s [%(levelname)s] %(message)s",
+            handlers=[
+                logging.FileHandler("log.log"),
+                logging.StreamHandler(sys.stdout)
+            ]
+        )
 
     def _compact_json_dict(self, data):
         """convert dict to compact json
@@ -128,8 +140,6 @@ class Client(object):
             "KC-API-KEY-VERSION": "2",
         }
         return headers
-
-    ## Private information (Requires authentication)
 
     def list_subusers(self):
         path = "sub/user"
@@ -263,12 +273,12 @@ class Client(object):
         return resp.json()["data"]
 
     def get_kline_history(
-        self, tickers, begin, end=None, interval:str="1day", progress_bar:bool=False, msg:bool=False,
-        warning_msg:bool=True,
+        self, tickers, begin, end=None, interval:str="1day", msg:bool=False,
+        warning:bool=True,
     ):
         """
         Query historic OHLCV data for a ticker or list of tickers from Kucoin historic 
-            database. Data is paginated to a max 1500 rows. 
+            database. 
         
         :param tickers: str pr list Currency pair or list of pairs. Pair names must be
             formatted in upper case (e.g. ETH-BTC)
@@ -281,7 +291,8 @@ class Client(object):
         :param interval: Interval at which to return OHLCV data. Default = 1day
             Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
                 8hour, 12hour, 1day, 1week
-        :param progress_bar: bool False
+        :param progress_bar: bool Flag to enable progress bar. Does not work in 
+            Jupyter notebooks yet
         :param msg: bool Flag to turn on helper messages
 
         :return df: Returns dataframe with datetime index
@@ -309,7 +320,7 @@ class Client(object):
 
         dfs = []
 
-        if warning_msg:
+        if warning:
             num_calls = len(unix_ranges) * len(tickers)
             if num_calls > 20:
                 warnings.warn(f"""
@@ -318,13 +329,6 @@ class Client(object):
                 """)
 
         for ticker in tickers:
-
-            if progress_bar:
-                bar = Bar(
-                    f"Processing {ticker} ...", 
-                    # max=len(unix_ranges), 
-                    suffix='%(percent)d%% Elapsed Time: %(elapsed)ds'
-                )
             paths = []
             for begin, end in unix_ranges:
                 path = f"market/candles?type={interval}&symbol={ticker}&startAt={begin}&endAt={end}"
@@ -336,7 +340,7 @@ class Client(object):
                 url = self._request("get", path)
                 resp = requests.request("get", url)
 
-                # Handle timeout codes by sleeping function
+                # Handle timeout response by sleeping function
                 if resp.status_code == 200:
                     pass
                 elif resp.status_code == 429:
@@ -347,7 +351,8 @@ class Client(object):
                         print("Re-establishing stream . . . ")
                     resp = requests.request("get", url)
                     if resp.status_code == 429:
-                        print("\nHard reset initiated.")
+                        if msg:
+                            print("\nHard reset initiated.")
                         time.sleep(180)
                         resp = requests.request("get", url)
                         if resp.status_code == 429:
@@ -377,20 +382,14 @@ class Client(object):
                     # This keyerror occurs when GET request returns no data
                     df = pd.DataFrame()
                 df_pages.append(df.astype(float))
-                if progress_bar:
-                    bar.next()
             if len(df_pages) > 1:
                 dfs.append(pd.concat(df_pages, axis=0))
             else:
                 dfs.append(df_pages[0])
-            if progress_bar:
-                bar.finish()
         if len(dfs) > 1:
-            return pd.concat(dfs, axis=1, keys=tickers).dropna()
+            return pd.concat(dfs, axis=1, keys=tickers)
         else:
-            return dfs[0].dropna()
-
-    ## General market data
+            return dfs[0]
 
     def get_order_histories(self, symbol):
         path = f"market/histories?symbol={symbol.upper()}"
