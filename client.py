@@ -5,7 +5,7 @@ import pandas as pd
 import json
 import calendar
 from datetime import datetime
-from utils.helpers import _parse_date
+from kucoincli.utils._helpers import _parse_date
 
 class Client(object):
 
