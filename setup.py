@@ -3,9 +3,11 @@ import setuptools
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
+version = "0.0.5"
+
 setuptools.setup(
     name="kucoin-cli",
-    version="0.0.4",
+    version=version,
     author="James VanLandingham",
     author_email="jameslvanlandingham@gmail.com",
     description="Kucoin API and websocket client",
@@ -14,7 +16,7 @@ setuptools.setup(
     url="https://github.com/jaythequant/kucoin-cli",
     project_urls={
         "Github Dist": "https://github.com/jaythequant/kucoin-cli",
-        "PyPi Dist": "https://pypi.org/project/kucoin-cli/0.0.1/"
+        "PyPi Dist": f"https://pypi.org/project/kucoin-cli/{version}/"
     },
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -35,6 +37,10 @@ setuptools.setup(
         "six",
         "urllib3",
         "websockets",
+        "progress_bar",
+        "timedelta",
+        "sqlalchemy",
+        "progress"
     ],
     python_requires=">=3.9",
 )
