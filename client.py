@@ -5,9 +5,32 @@ import pandas as pd
 import json
 import calendar
 from datetime import datetime
-from utils.helpers import parse_date
+from utils.helpers import _parse_date
 
 class Client(object):
+
+    """
+    KuCoin REST API wrapper
+
+    :param api_key: str (Optional) API key generated upon creation of API endpoint on
+        kucoin.com. If no API key is given, the user cannot access functions requiring
+        account level authorization, but can access endpoints that require general auth
+        such as kline historic data.
+    :param api_secret: str (Optional) Secret API sequence generated upon create of API
+        endpoint on kucoin.com. See api_key param docs for info on optionality of 
+        variable
+    :param api_passphrase: str (Optional) User created API passphrase. Passphrase is 
+        created by the user during API setup on kucoin.com. See api_key param docs for 
+        info on optionality of variable
+    :param sandbox: bool If sandbox = True, access a special papertrading API version
+        available for testing trading. For more details visit: https://sandbox.kucoin.com/
+        Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
+        regular kucoin API and may only be obtained from the sandbox website and (2)
+        that sandbox markets are completely seperate than kucoin's regular sites. It is
+        recommended that you not use sandbox as the data is highly corrupted.
+    :param requests_params: Not yet implemented feature; please ignore for now
+    """
+
     REST_API_URL = "https://api.kucoin.com"
     SAND_BOX_URL = "https://openapi-sandbox.kucoin.com"
     API_VERSION = "v1"
@@ -36,8 +59,6 @@ class Client(object):
             self.API_URL = self.REST_API_URL
 
         self._requests_params = requests_params
-
-    ## Internal functions used for feeding and processing data
 
     def _compact_json_dict(self, data):
         """convert dict to compact json
@@ -152,8 +173,8 @@ class Client(object):
         return response.json()["data"]
 
     def create_account(self, type, currency):
-        ## Does not work ##
         """
+        ## Does not work ##
         :param type: Account types are main, trade, margin
         """
         data = {type: type, currency: currency}
@@ -251,19 +272,19 @@ class Client(object):
             formatting rules as the begin parameter. If unspecified end will 
             default to UTC time now
         :param interval: Interval at which to return OHLCV data. Default = 1day
-            Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 
-            2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week
+            Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
+                8hour, 12hour, 1day, 1week
         :param msg: bool Flag to turn on handling messages such as server timeout
             notices
 
         :return df: Returns dataframe with datetime index
         """
         if isinstance(begin, str):
-            begin = parse_date(begin)
+            begin = _parse_date(begin)
 
         if end:
             if isinstance(end, str):
-                end = parse_date(end)
+                end = _parse_date(end)
         else:
             end = datetime.utcnow()
 
@@ -287,7 +308,9 @@ class Client(object):
             resp = requests.request("get", url)
             # This chunk of 429 if statements ensures that the program appropriately handles server
             # timeouts without breaking down on even during massive query periods.
-            if resp.status_code == 429:
+            if resp.status_code == 200:
+                pass
+            elif resp.status_code == 429:
                 if msg:
                     print("\nRate limit trigger")
                 time.sleep(11)
