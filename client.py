@@ -6,6 +6,10 @@ import json
 import calendar
 from datetime import datetime
 from kucoincli.utils._helpers import _parse_date
+from kucoincli.utils.helpers import _parse_interval
+from progress.bar import Bar
+import warnings
+
 
 class Client(object):
 
@@ -258,13 +262,16 @@ class Client(object):
         resp = requests.request("get", url, headers=headers)
         return resp.json()["data"]
 
-    def get_kline_history(self, tickers, begin, end=None, interval="1day", msg=False):
+    def get_kline_history(
+        self, tickers, begin, end=None, interval:str="1day", progress_bar:bool=False, msg:bool=False,
+        warning_msg:bool=True,
+    ):
         """
         Query historic OHLCV data for a ticker or list of tickers from Kucoin historic 
             database. Data is paginated to a max 1500 rows. 
         
-        :param tickers: Currency pair or list of pairs. Pairs must be formatted 
-            in upper case (e.g. ETH-BTC)
+        :param tickers: str pr list Currency pair or list of pairs. Pair names must be
+            formatted in upper case (e.g. ETH-BTC)
         :param begin: Can be string or datetime object. Note that server time is UTC
             String format may include hours/minutes/seconds or may not
             Examples: "YYYY-MM-DD" or "YYYY-MM-DD"
@@ -274,8 +281,8 @@ class Client(object):
         :param interval: Interval at which to return OHLCV data. Default = 1day
             Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
                 8hour, 12hour, 1day, 1week
-        :param msg: bool Flag to turn on handling messages such as server timeout
-            notices
+        :param progress_bar: bool False
+        :param msg: bool Flag to turn on helper messages
 
         :return df: Returns dataframe with datetime index
         """
@@ -288,72 +295,100 @@ class Client(object):
         else:
             end = datetime.utcnow()
 
-        begin = int(calendar.timegm(begin.timetuple()))
-        end = int(calendar.timegm(end.timetuple()))
+        if isinstance(tickers, str):    
+            tickers = [tickers]    
 
-        paths = []
+        paganated_ranges = _parse_interval(begin, end, interval)
+        unix_ranges = []    # This list will hold paganated unix epochs
 
-        if isinstance(tickers, list):
-            for ticker in tickers:
-                path = f"market/candles?type={interval}&symbol={ticker}&startAt={begin}&endAt={end}"
-                paths.append(path)
-        else:
-            path = f"market/candles?type={interval}&symbol={tickers}&startAt={begin}&endAt={end}"
-            paths.append(path)
+        # Convert paganated datetime ranges to unix epochs
+        for b, e in paganated_ranges:
+            b = int(calendar.timegm(b.timetuple()))
+            e = int(calendar.timegm(e.timetuple()))
+            unix_ranges.append((b, e))
 
         dfs = []
-        
-        for path in paths:
-            url = self._request("get", path)
-            resp = requests.request("get", url)
-            # This chunk of 429 if statements ensures that the program appropriately handles server
-            # timeouts without breaking down on even during massive query periods.
-            if resp.status_code == 200:
-                pass
-            elif resp.status_code == 429:
-                if msg:
-                    print("\nRate limit trigger")
-                time.sleep(11)
-                if msg:
-                    print("Re-establishing stream . . . ")
+
+        if warning_msg:
+            num_calls = len(unix_ranges) * len(tickers)
+            if num_calls > 20:
+                warnings.warn(f"""
+                Endpoint will be queried {num_calls} times.
+                    Server may require one or multiple timeouts. Set msg to true for timeout notices
+                """)
+
+        for ticker in tickers:
+
+            if progress_bar:
+                bar = Bar(
+                    f"Processing {ticker} ...", 
+                    # max=len(unix_ranges), 
+                    suffix='%(percent)d%% Elapsed Time: %(elapsed)ds'
+                )
+            paths = []
+            for begin, end in unix_ranges:
+                path = f"market/candles?type={interval}&symbol={ticker}&startAt={begin}&endAt={end}"
+                paths.append(path)
+
+            df_pages = []   # List for individual df returns from paganated values
+
+            for path in paths:
+                url = self._request("get", path)
                 resp = requests.request("get", url)
-                if resp.status_code == 429:
-                    print("\nHard reset initiated.")
-                    time.sleep(180)
+
+                # Handle timeout codes by sleeping function
+                if resp.status_code == 200:
+                    pass
+                elif resp.status_code == 429:
+                    if msg:
+                        print("\nRate limit trigger")
+                    time.sleep(11)
+                    if msg:
+                        print("Re-establishing stream . . . ")
                     resp = requests.request("get", url)
                     if resp.status_code == 429:
-                        time.sleep(300)
+                        print("\nHard reset initiated.")
+                        time.sleep(180)
                         resp = requests.request("get", url)
-                    else:
-                        pass
+                        if resp.status_code == 429:
+                            time.sleep(300)
+                            resp = requests.request("get", url)
+                        else:
+                            pass
+                else:
+                    print(f"Failed reponse. Returned code: {resp.status_code}")
+                
+                resp = resp.json()
+                try:
+                    df = pd.DataFrame(resp["data"])
+                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
+                    df = df.rename(
+                        columns={
+                            0: "time",
+                            1: "open",
+                            2: "close",
+                            3: "high",
+                            4: "low",
+                            5: "volume",
+                            6: "turnover",
+                        }
+                    ).set_index("time")
+                except KeyError:
+                    # This keyerror occurs when GET request returns no data
+                    df = pd.DataFrame()
+                df_pages.append(df.astype(float))
+                if progress_bar:
+                    bar.next()
+            if len(df_pages) > 1:
+                dfs.append(pd.concat(df_pages, axis=0))
             else:
-                print(f"Failed reponse. Returned code: {resp.status_code}")
-            resp = resp.json()
-            try:
-                df = pd.DataFrame(resp["data"])
-                df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
-                df = df.rename(
-                    columns={
-                        0: "time",
-                        1: "open",
-                        2: "close",
-                        3: "high",
-                        4: "low",
-                        5: "volume",
-                        6: "turnover",
-                    }
-                ).set_index("time")
-            except KeyError:
-                # This keyerror occurs when GET request returns no data
-                # In this event, we assume this is an indication of reaching the end of our timeseries
-                # The appropriate response is to return an empty dataframe
-                # print("Complete time series received.")
-                df = pd.DataFrame()
-            dfs.append(df.astype(float))
+                dfs.append(df_pages[0])
+            if progress_bar:
+                bar.finish()
         if len(dfs) > 1:
-            return pd.concat(dfs, axis=1, keys=tickers)
+            return pd.concat(dfs, axis=1, keys=tickers).dropna()
         else:
-            return dfs[0]
+            return dfs[0].dropna()
 
     ## General market data
 
@@ -720,42 +755,3 @@ class Client(object):
         data_json = self._compact_json_dict(data)
         resp = requests.request("post", url, headers=headers, data=data_json)
         return resp.json()
-
-
-class AsyncClient(Client):
-    def __init__():
-        super().__init__(
-            api_key="",
-            api_secret="",
-            api_passphrase="",
-            sandbox=False,
-            requests_params=None,
-        )
-
-    async def async_margin_order(self, symbol, side, size=None, funds=None, client_oid=None, remark=None,
-                                stp=None, mode="cross", autoborrow=True,):
-        data = {
-            "side": side,
-            "symbol": symbol,
-            "type": self.ORDER_MARKET,
-            "marginMode": mode,
-            "autoBorrow": autoborrow,
-        }
-        if size:
-            data["size"] = size
-        if funds:
-            data["funds"] = funds
-        if client_oid:
-            data["clientOid"] = client_oid
-        else:
-            data["clientOid"] = int(time.time() * 10000)
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
-        if mode != "cross":
-            data["marginMode"] = mode
-        path = "orders"
-
-        url, headers = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
