@@ -3,7 +3,7 @@ import setuptools
 with open("README.md", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-version = "0.0.6"
+version = "0.0.8"
 
 setuptools.setup(
     name="kucoin-cli",
@@ -40,7 +40,7 @@ setuptools.setup(
         "progress_bar",
         "timedelta",
         "sqlalchemy",
-        "progress"
+        "progress",
     ],
     python_requires=">=3.9",
 )
