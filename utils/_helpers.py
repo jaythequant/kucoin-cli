@@ -25,7 +25,12 @@ def _parse_date(date_string):
 
 def _parse_interval(begin, end, interval) -> list:
     """
-    Parse timedelta into number of calls required to API
+    Parse date range for consumption by get_kline_history function
+        in client when obtaining paganated data.
+
+    :param begin: Datetime object. Earliest date in range
+    :param end: Datetime object. Latest date in range
+    :param interval: Interval at which to parse date range
     
     :return call_range: Returns a list of tuples containing beginning
         and ending date ranges. These ranges will appropriately paganate
@@ -34,6 +39,9 @@ def _parse_interval(begin, end, interval) -> list:
     max_bars = 1500
 
     _, num, inc = re.split('(\d+)', interval)  # Parse interval
+    if inc == "week":   # Special handling for week increment
+        num = 7
+        inc = "day"
     delt = timedelta.Timedelta(end - begin)
     # Calculate total number of bars needed
     bars = getattr(delt.total, interval_map[inc]) / int(num)
