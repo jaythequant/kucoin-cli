@@ -5,17 +5,18 @@ import pandas as pd
 import json
 import calendar
 from datetime import datetime
-from utils._helpers import _parse_date
-from utils._helpers import _parse_interval
 import warnings
 import logging
 import sys
+
+from kucoincli.utils._helpers import _parse_date
+from kucoincli.utils._helpers import _parse_interval
 
 
 class Client(object):
 
     """
-    KuCoin REST API wrapper
+    KuCoin REST API wrapper -> https://docs.kucoin.com/#general
 
     :param api_key: str (Optional) API key generated upon creation of API endpoint on
         kucoin.com. If no API key is given, the user cannot access functions requiring
@@ -71,7 +72,7 @@ class Client(object):
             level=logging.INFO,
             format="%(asctime)s  %(funcName)s [%(levelname)s] %(message)s",
             handlers=[
-                logging.FileHandler("log.log"),
+                # logging.FileHandler("log.log"),
                 logging.StreamHandler(sys.stdout)
             ]
         )
@@ -548,8 +549,6 @@ class Client(object):
         resp = requests.request("get", url)
         return resp.json()["data"]
 
-    ### General details
-
     def get_socket_detail(self, private=False):
         if not private:
             path = "bullet-public"
@@ -577,20 +576,55 @@ class Client(object):
         resp = resp.json()["data"]
         return resp
 
-    ### Trade execution functions (Requires authentication)
+    def limit_order(
+        self, symbol:str, side:str, price:float, size:float=None, 
+        funds:float=None, client_oid:str=None, remark:str=None, 
+        tif:str="GTC", stp:str=None, cancel_after:int=None, 
+        postonly:bool=False, hidden:bool=False, iceberg:bool=None, 
+        visible_size:float=None,
+    ):
+        """"
+        API command for placing limit trades in the trade account (non-margin). 
 
-    def create_limit_order(
-        self, symbol, side, price, size, client_oid=None, remark=None, time_in_force=None, stop=None,
-        stop_price=None, stp=None, trade_type=None, cancel_after=None, post_only=None, hidden=None,
-        iceberg=None, visible_size=None):
-
+        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
+        :param side: Side to execute trade on 
+            Options: buy or sell
+        :param price: float Trades must be executed at this price or better
+        :param size: (Optional) User is required to either specify size or funds.
+            Size indicates the amount of base currency to buy or sell
+            Size must be above baseMinSize and below baseMaxSize
+            Size must be specified in baseIncrement symbol units
+            Size must be a positive float value
+        :param funds: (Optional) User is required to either specify size or funds.
+            Funds indicates the amount of price [quote] currency to buy or sell.
+            Funds must be above quoteMinSize and below quoteMaxSize
+            Size of funds must be specified in quoteIncrement symbol units
+            Funds must be a positive float value
+        :param client_oid: (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch
+        :param remark: (Optional) Add a remark to the order execution
+            Remarks may not exceed 100 utf8 characters
+        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
+            Options: CN, CO, CB, or DC 
+        :param tif: Dictate time in force order types. 
+            Order types: GTC [default], GTT, IOC, or FOK
+        :param cancel_after: Cancel after n seconds. Requires that tif be GTT
+        :param postonly: bool If postonly is true, orders may only be executed 
+            at the maker fee. Orders that would receive taker will be rejected.
+        :param hidden: bool Orders will appear in orderbook
+        
+        :return order: JSON dict with order execution details
+        """
         data = {
             "symbol": symbol,
             "side": side,
             "type": self.ORDER_LIMIT,
             "price": price,
-            "size": size,
         }
+        if size:
+            data["size"] = size
+        if funds:
+            data["funds"] = funds
         if client_oid:
             data["clientOid"] = client_oid
         else:
@@ -599,17 +633,12 @@ class Client(object):
             data["remark"] = remark
         if stp:
             data["stp"] = stp
-        if trade_type:
-            data["tradeType"] = trade_type
-        if time_in_force:
-            data["timeInForce"] = time_in_force
+        if tif:
+            data["timeInForce"] = tif
         if cancel_after:
             data["cancelAfter"] = cancel_after
-        if post_only:
-            data["postOnly"] = post_only
-        if stop:
-            data["stop"] = stop
-            data["stopPrice"] = stop_price
+        if postonly:
+            data["postOnly"] = postonly
         if hidden:
             data["hidden"] = hidden
         if iceberg:
@@ -621,8 +650,35 @@ class Client(object):
         resp = requests.request("post", url, headers=headers, data=data_json)
         return resp.json()
 
-    def create_market_order(
-        self, symbol, side, size=None, funds=None, client_oid=None, remark=None, stp=None, trade_type=None):
+    def market_order(
+        self, symbol:str, side:str, size:float=None, funds:float=None, 
+        client_oid=None, remark=None, stp=None,
+    ):
+        """
+        API command for executing market orders in the trade account (non-margin)
+        
+        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
+        :param side: Side to execute trade on 
+            Options: buy or sell
+        :param size: (Optional) User is required to either specify size or funds.
+            Size indicates the amount of base currency to buy or sell
+            Size must be above baseMinSize and below baseMaxSize
+            Size must be specified in baseIncrement symbol units
+            Size must be a positive float value
+        :param funds: (Optional) User is required to either specify size or funds.
+            Funds indicates the amount of price [quote] currency to buy or sell.
+            Funds must be above quoteMinSize and below quoteMaxSize
+            Size of funds must be specified in quoteIncrement symbol units
+            Funds must be a positive float value
+        :param client_oid: Unique order ID for identification of orders. Defaults to
+            integer nonce based on unix epoch
+        :param remark: (Optional) Add a remark to the order execution
+            Remarks may not exceed 100 utf8 characters
+        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
+            Options: CN, CO, CB, or DC 
+
+        :return order: JSON dict with order execution details
+        """
 
         data = {"side": side, "symbol": symbol, "type": self.ORDER_MARKET}
         if size:
@@ -637,16 +693,46 @@ class Client(object):
             data["remark"] = remark
         if stp:
             data["stp"] = stp
-        if trade_type:
-            data["tradeType"] = trade_type
         path = "orders"
         url, headers = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
         resp = requests.request("post", url, headers=headers, data=data_json)
         return resp.json()
 
-    def margin_market_order(self, symbol, side, size=None, funds=None,client_oid=None, 
-                            remark=None, stp=None, mode="cross", autoborrow=True):
+    def margin_market_order(
+        self, symbol:str, side:str, size:float=None, funds:float=None, 
+        client_oid:str=None, remark:str=None, stp:str=None, mode:str="cross", 
+        autoborrow:bool=True,
+    ):
+        """
+        API command for placing market trades on margin. 
+
+        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
+        :param side: Side to execute trade on 
+            Options: buy or sell
+        :param size: (Optional) User is required to either specify size or funds.
+            Size indicates the amount of base currency to buy or sell
+            Size must be above baseMinSize and below baseMaxSize
+            Size must be specified in baseIncrement symbol units
+            Size must be a positive float value
+        :param funds: (Optional) User is required to either specify size or funds.
+            Funds indicates the amount of price [quote] currency to buy or sell.
+            Funds must be above quoteMinSize and below quoteMaxSize
+            Size of funds must be specified in quoteIncrement symbol units
+            Funds must be a positive float value
+        :param client_oid: Unique order ID for identification of orders. Defaults to
+            integer nonce based on unix epoch
+        :param remark: (Optional) Add a remark to the order execution
+            Remarks may not exceed 100 utf8 characters
+        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
+            Options: CN, CO, CB, or DC 
+        :param mode: User may trade on cross margin or isolated margin. Default = cross 
+        :param autoborrow: bool If true, system will automatically borrw at the
+            optimal interest rate prior to placing the requested order. 
+
+        :return order: JSON dict with order execution details
+        """
+
         data = {
             "side": side,
             "symbol": symbol,
@@ -676,30 +762,31 @@ class Client(object):
 
 
     def margin_limit_order(
-        self, symbol: str, side: str, price: float, size=None, funds=None, 
-        client_oid=None, remark=None, stp=None, mode="cross", autoborrow=True, 
-        tif="GTC", cancel_after=None, postonly=False, hidden=False, 
+        self, symbol:str, side:str, price:float, size:float=None, 
+        funds:float=None, client_oid:str=None, remark:str=None, 
+        stp:str=None, mode:str="cross", autoborrow:bool=True, 
+        tif:str="GTC", cancel_after:int=None, postonly:bool=False, 
+        hidden:bool=False, iceberg:bool=None, visible_size:float=None,
     ) -> dict: 
         """"
         API command for placing margin limit trades. 
-        For more details reference API docs: https://docs.kucoin.com/#general
 
         :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
         :param side: Side to execute trade on 
             Options: buy or sell
         :param price: float Trades must be executed at this price or better
-        :param size: Psuedo-optional input. User is required to either specify size or funds.
-            Size indicates the amount of BASE currency to buy or sell
+        :param size: (Optional) User is required to either specify size or funds.
+            Size indicates the amount of base currency to buy or sell
             Size must be above baseMinSize and below baseMaxSize
             Size must be specified in baseIncrement symbol units
             Size must be a positive float value
-        :param funds: Psuedo-optional input. User is required to either specify size or funds.
-            Funds indicates the amount of PRICE [quote] currency to buy or sell.
+        :param funds: (Optional) User is required to either specify size or funds.
+            Funds indicates the amount of price [quote] currency to buy or sell.
             Funds must be above quoteMinSize and below quoteMaxSize
             Size of funds must be specified in quoteIncrement symbol units
             Funds must be a positive float value
-        :param client_oid: Unique order ID for identification of orders. Defaults to
-            integer nonce based on unix epoch
+        :param client_oid: (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch
         :param remark: (Optional) Add a remark to the order execution
             Remarks may not exceed 100 utf8 characters
         :param stp: (Optional) Self-trade prevention. Primarily used by market makers
@@ -714,7 +801,7 @@ class Client(object):
             at the maker fee. Orders that would receive taker will be rejected.
         :param hidden: bool Orders will appear in orderbook
         
-        :param return: Returns JSON as dictionary with all order details inside
+        :return order: JSON dict with order execution details
         """
         if not size and not funds:
             raise ValueError("Must specify either size or funds parameter.")
@@ -749,6 +836,9 @@ class Client(object):
             data["hidden"] = hidden
         if postonly:
             data["postOnly"] = postonly
+        if iceberg:
+            data["iceberg"] = iceberg
+            data["visible_size"] = visible_size
         path = "margin/order"
         url, headers = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
