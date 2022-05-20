@@ -32,7 +32,7 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 - Access to 99%+ of REST and Websocket endpoints
 - Fully implemented margin trading features
 
-#### Quickstart
+### Quickstart
 1. Register for an account at [KuCoin](https://www.kucoin.com/)
 2. [Generate an API](https://www.kucoin.com/account/api)
 3. Download kucoin-cli using pip
@@ -82,7 +82,7 @@ order = client.market_order(
 )
 ```
 
-#### Why [KuCoin](https://www.kucoin.com/)? 
+### Why [KuCoin](https://www.kucoin.com/)? 
 - _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
 - Industry low transactions fees 
 - High liquidity across coins and a wide offering of shitcoins
