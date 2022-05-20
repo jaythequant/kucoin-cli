@@ -37,7 +37,7 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 2. [Generate an API](https://www.kucoin.com/account/api)
 3. Download kucoin-cli using pip
 
-`pip install kucoin-cli`
+    `pip install kucoin-cli`
 
 4. Try out some functions! 
 
