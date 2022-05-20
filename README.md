@@ -36,10 +36,11 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 1. Register for an account at [KuCoin](https://www.kucoin.com/)
 2. [Generate an API](https://www.kucoin.com/account/api)
 3. Download kucoin-cli using pip
-`pip install kucoin-cli`
+```pip install kucoin-cli```
 4. Try out some functions! 
 
-`import kucoincli.client as Client
+```
+import kucoincli.client as Client
 
 api_key = 'api_key'
 api_secret = 'api_secret' 
@@ -62,7 +63,8 @@ order = client.margin_limit_order(
 
 margin_df = client.get_margin_data("BTC")
 
-order_df = client.get_order_histories("BTC-USDT")`
+order_df = client.get_order_histories("BTC-USDT")
+```
 
 #### Why [KuCoin](https://www.kucoin.com/)? 
 - _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
