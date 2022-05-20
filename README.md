@@ -14,13 +14,13 @@ I have used this package to:
 _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Websocket API v2](https://docs.kucoin.com/#general). Use this package at your own risk.**_
 
 #### Roadmap
-[ ] Clean-up websocket implemention + Make client-building more out of the box
-[ ] Improve logging across the package
-[ ] Write better docstrings and update features for lesser used functions
-[ ] Add stop-loss order capabilities
-[ ] Add schema configuration functionality to data pipeline
-[ ] Add futures API access
-[ ] Develop an asynchronous REST client
+- [ ] Clean-up websocket implemention + Make client-building more out of the box
+- [ ] Improve logging across the package
+- [ ] Write better docstrings and update features for lesser used functions
+- [ ] Add stop-loss order capabilities
+- [ ] Add schema configuration functionality to data pipeline
+- [ ] Add futures API access
+- [ ] Develop an asynchronous REST client
 
 #### Features
 - One-line database pipeline. Open a high stability pipe from kucoin's OHLC(V) endpoint to a database of your creation
