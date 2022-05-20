@@ -38,6 +38,7 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 3. Download kucoin-cli using pip
 
 `pip install kucoin-cli`
+
 4. Try out some functions! 
 
 ```
