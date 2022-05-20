@@ -95,5 +95,6 @@ order = client.market_order(
 - [Kucoin API Documenation](https://docs.kucoin.com/#general)
 
 ##### Donate
+Did this package help you out? Consider donating! 
 - Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
-- Bitcoin WalletL: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
+- Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
