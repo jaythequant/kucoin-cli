@@ -1,4 +1,4 @@
-## Kucoin-Cli: Pandas-oriented REST and Websocket API _(alpha release)_
+# Kucoin-Cli: Pandas-oriented REST and Websocket API _(alpha release)_
 ## A data science focused Python API implementation 
 
 <img src="https://img.shields.io/pypi/v/kucoin-cli"> <img src="https://img.shields.io/pypi/l/kucoin-cli"> <img src="https://img.shields.io/badge/Maintained-YES-green">
