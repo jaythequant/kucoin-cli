@@ -1,4 +1,4 @@
-# Kucoin-Cli: Pandas-oriented REST and Websocket API _(alpha release)_
+## Kucoin-Cli: Pandas-oriented REST and Websocket API _(alpha release)_
 ## A data science focused Python API implementation 
 
 <img src="https://img.shields.io/pypi/v/kucoin-cli"> <img src="https://img.shields.io/pypi/l/kucoin-cli"> <img src="https://img.shields.io/badge/Maintained-YES-green">
@@ -82,7 +82,7 @@ order = client.market_order(
 )
 ```
 
-### Why [KuCoin](https://www.kucoin.com/)? 
+#### Why [KuCoin](https://www.kucoin.com/)? 
 - _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
 - Industry low transactions fees 
 - High liquidity across coins and a wide offering of shitcoins
