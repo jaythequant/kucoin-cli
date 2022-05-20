@@ -33,9 +33,9 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 - Fully implemented margin trading features
 
 #### Why [KuCoin](https://www.kucoin.com/)? 
-- **For U.S. based customer this is one of the last remaining "chaotic" exchanges**
+- _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
 - Industry low transactions fees 
-- High liquidity across coins and a wide offering shitcoins for speculation
+- High liquidity across coins and a wide offering of shitcoins
 - Frequent additions of speculative coins 
 - Among the least regulated exchanges
 
