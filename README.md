@@ -5,6 +5,11 @@
 
 Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Websocket API v2](https://docs.kucoin.com/#general). Use at your own risk.
 
+Distributions & Info:
+- [Kucoin-Cli on PyPI](https://pypi.org/project/kucoin-cli/)
+- [Kucoin-Cli on Github](https://github.com/jaythequant/kucoin-cli)
+- [Kucoin API Documenation](https://docs.kucoin.com/#general)
+
 
 
 
