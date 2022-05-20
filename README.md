@@ -38,12 +38,12 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 3. Download kucoin-cli using pip
 `pip install kucoin-cli`
 4. Try out some functions! 
-`
-import kucoincli.client as Client
 
-api_key = 'api_key' <-- Your credentials here
-api_secret = 'api_secret' <-- Your credentials here
-api_passphrase = 'api_passphrase' <-- Your credentials here
+`import kucoincli.client as Client
+
+api_key = 'api_key'
+api_secret = 'api_secret' 
+api_passphrase = 'api_passphrase' 
 
 historic_data = client.get_kline_history(
     tickers=["BTC-USDT", "ETH-USDT"],
@@ -62,8 +62,7 @@ order = client.margin_limit_order(
 
 margin_df = client.get_margin_data("BTC")
 
-order_df = client.get_order_histories("BTC-USDT")
-`
+order_df = client.get_order_histories("BTC-USDT")`
 
 #### Why [KuCoin](https://www.kucoin.com/)? 
 - _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
@@ -78,5 +77,5 @@ order_df = client.get_order_histories("BTC-USDT")
 - [Kucoin API Documenation](https://docs.kucoin.com/#general)
 
 ##### Donate
-Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
-Bitcoin WalletL: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
+- Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
+- Bitcoin WalletL: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
