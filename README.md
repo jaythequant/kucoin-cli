@@ -36,6 +36,7 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 1. Register for an account at [KuCoin](https://www.kucoin.com/)
 2. [Generate an API](https://www.kucoin.com/account/api)
 3. Download kucoin-cli using pip
+
 `pip install kucoin-cli`
 4. Try out some functions! 
 
@@ -47,7 +48,11 @@ api_key = 'api_key'
 api_secret = 'api_secret' 
 api_passphrase = 'api_passphrase' 
 
-historic_data = client.get_kline_history(
+margin_df = client.get_margin_data("BTC")
+
+order_df = client.get_order_histories("BTC-USDT")
+
+ohlvc_df = client.get_kline_history(
     tickers=["BTC-USDT", "ETH-USDT"],
     begin="2022-01-01",
     end="2022-02-01",
@@ -62,23 +67,11 @@ order = client.margin_limit_order(
     cancel_after=600,
 )
 
-order = client.order(
-    symbol="BTC-USDT",
-    side="sell",
-    size=1.0000,
-    tif="GTT",
-    cancel_after=600,
-)
-
 order = client.market_order(
     symbol="ETH-USDT",
     side="buy",
     size="0.015",
 )
-
-margin_df = client.get_margin_data("BTC")
-
-order_df = client.get_order_histories("BTC-USDT")
 ```
 
 #### Why [KuCoin](https://www.kucoin.com/)? 
