@@ -8,7 +8,7 @@ This package was written by a data analyst for data analysts. Specifically desig
 
 I have used this package to:
 - Automate the generation of a PSQL database with over 400M rows of OHLC(V) data
-- Implement a fully statistical arbitrage trading algorithm via websockets
+- Take a complex statistical arbitrage trading algorithm live via websockets
 - Feed and train ML/RL algorithms for future deployment into live trading sessions
 
 _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Websocket API v2](https://docs.kucoin.com/#general). Use this package at your own risk.**_
