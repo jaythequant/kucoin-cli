@@ -3,12 +3,12 @@
 
 <img src="https://img.shields.io/pypi/v/kucoin-cli"> <img src="https://img.shields.io/pypi/l/kucoin-cli"> <img src="https://img.shields.io/badge/Maintained-YES-green">
 
-#### Why use this library over [python-kucoin](https://github.com/sammchardy/python-kucoin) or the [official SDK](https://github.com/Kucoin/kucoin-python-sdk)?
+### Why use this library over [python-kucoin](https://github.com/sammchardy/python-kucoin) or the [official SDK](https://github.com/Kucoin/kucoin-python-sdk)?
 The 
 
 Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Websocket API v2](https://docs.kucoin.com/#general). Use at your own risk.
 
-##### Roadmap
+#### Roadmap
 
 
 #### Features
