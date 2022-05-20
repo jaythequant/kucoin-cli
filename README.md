@@ -49,10 +49,15 @@ api_key = 'api_key'
 api_secret = 'api_secret' 
 api_passphrase = 'api_passphrase' 
 
+client = Client(api_key, api_secret, api_passphrase)
+
+# Get recent margin dataflow for Bitcoin
 margin_df = client.get_margin_data("BTC")
 
+# Pull buy/sell orders for BTC-USDT
 order_df = client.get_order_histories("BTC-USDT")
 
+# Query one month of minutely data for BTC-USDT and ETH-USDT
 ohlvc_df = client.get_kline_history(
     tickers=["BTC-USDT", "ETH-USDT"],
     begin="2022-01-01",
@@ -60,6 +65,7 @@ ohlvc_df = client.get_kline_history(
     interval="1min",
 )
 
+# Place a margin limit order to sell 1 BTC good for 10 minutes
 order = client.margin_limit_order(
     symbol="BTC-USDT",
     side="sell",
@@ -68,6 +74,7 @@ order = client.margin_limit_order(
     cancel_after=600,
 )
 
+# Buy 0.015 ETH-USDT at market price
 order = client.market_order(
     symbol="ETH-USDT",
     side="buy",
