@@ -94,7 +94,6 @@ order = client.market_order(
 - [Kucoin-Cli on Github](https://github.com/jaythequant/kucoin-cli)
 - [Kucoin API Documenation](https://docs.kucoin.com/#general)
 
-##### Donate
-Did this package help you out? Consider donating! 
+##### Consider donating:
 - Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
 - Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
