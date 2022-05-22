@@ -15,8 +15,7 @@ _**Disclaimer: This is an unofficial implementation of the [KuCoin Rest and Webs
 
 ### Roadmap
 - [ ] Clean-up websocket implemention and improve ease of use
-- [ ] Improve logging across the package
-- [ ] Write better docstrings and update features for lesser used functions
+- [x] Write better docstrings and update features for lesser used functions
 - [ ] Add stop-loss order capabilities
 - [ ] Add schema configuration functionality to data pipeline
 - [ ] Add futures API access
