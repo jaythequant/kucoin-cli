@@ -12,7 +12,7 @@
 #
 import os
 import sys
-sys.path.insert(0, os.path.abspath('../../'))
+sys.path.insert(0, os.path.abspath('../..'))
 
 
 # -- Project information -----------------------------------------------------
@@ -34,8 +34,6 @@ extensions = [
     'sphinx.ext.napoleon', 
     'sphinx.ext.autodoc'
 ]
-
-autodoc_mock_imports = ['numpy', 'kucoin-cli']
 
 napoleon_google_docstring = False
 napoleon_use_param = False
