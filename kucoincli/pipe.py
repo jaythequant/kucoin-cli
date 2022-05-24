@@ -4,55 +4,66 @@ import timedelta
 import math
 import datetime as dt
 from kucoincli.client import Client
+import logging
 
-####################################################################################################################
-# Data pipeline connecting kucoin historic OHLCV data (acquired via API) to SQL schema through SQLAlchemy engine.
-####################################################################################################################
+###################################################################################################################
+# Data pipeline connecting kucoin historic OHLCV data (acquired via API) to SQL schema through SQLAlchemy engine. #
+###################################################################################################################
 
 # Features I still want to add...
 # Progress bar does not reach 100% if end of data is found (needs fixed)
-# Logging in both client.get_kline_data and pipeline function
+
+logger = logging.getLogger(__name__)
 
 def pipeline(
-    tickers: list, schema: str, engine, interval: int, from_date, to_date=None, 
+    tickers:list or list, schema:str, engine, interval:str, from_date, to_date=None, 
     loop_range:int=None, loop_increment:int=1500, chunk_size:int=500, 
-    if_exists:str="append", error_msg:bool=False, progress_bar:bool=True,
+    if_exists:str="append", msg:bool=False, progress_bar:bool=True,
 ) -> None:
-    """
-    Data acquisition pipeline from KuCoin OHLCV API call ----> SQL database.
+    """Data acquisition pipeline from KuCoin OHLCV API call ----> SQL database.
 
-    :param tickers: list List of tickers to call Kucoin API for OHLCV data
-        Tickers in list must be named the same as Kucoin's naming method (e.g., BTC-USDT)
-    :param schema: str SQL schema in which to store acquired OHLCV data.
-    :param engine: SQLAlchemy engine (created using "create_engine" function).
-    :param client: Client object for making API calls to Kucoin server
-    :param interval: OHLCV interval frequency. 
-        Options: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 
-            6hour, 8hour, 12hour, 1day, 1week
-    :param start_data: Datetime object. Note that Kucoin servers are on UTC time, so it
-        is highly recommended that the datetime object used is also UTC time.
-        Failure to convert to UTC will result in confusing server response times.
-    :param to_date: Datetime object. End date in target date range. See start_date for 
-        specific notes on timezone recommendations. Note that to_date will override the
-        loop_range parameter. 
-    :param loop_range: int Total number of times to loop through API calls. 
+    Notes
+    -----
+        Be aware that KuCoin servers are on UTC time. If this is not accounted for
+        returns may be inaccurate.
+
+    Parameters
+    ----------
+    tickers : str or list
+        Ticker or list of tickers to call Kucoin API for OHLCV data (e.g., BTC-USDT)
+    schema : str 
+        SQL schema in which to store acquired OHLCV data.
+    engine : _engine.Engine
+        SQLAlchemy engine (created using "create_engine" function).
+    interval : str
+        OHLCV interval frequency. 
+        Options: 1min, 3min, 5min, 15min, 30min, 1hour, 
+        2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week
+    from_date : datetime.datetime
+        Date at which to start date range.
+    to_date: datetime.datetime
+        Date at which to end date range. If both to_date and start_date are left blank 
+    loop_range: int Total number of times to loop through API calls. 
         For further context, the Kucoin OHLCV data is paginated with a max return of 1500 rows of 
         OHLCV data of any given interval. Pipeline executes n calls per asset of increment x.
         Where n = loop_range and x = loop_increment. 
         Note: Loop range parameter will is invalid unless to_date = None
-    :param loop_increment: int Increment control number of rows of OHLCV data obtained per call
-        Max rows allowed by Kucoin per call is 1500. This is the default increment in function.
-    :param chunk_size: int Chunksize param for use by Pandas to_sql function. Chunksize may be 
+    loop_increment : int 
+        Increment control number of rows of OHLCV data obtained per call. Max rows 
+        allowed by Kucoin per call is 1500. This is the default increment in function.
+    chunk_size : int 
+        Chunksize for use by Pandas to_sql function. Chunksize may be 
         optimized for better read/write performance to SQL database.
-    :param if_exists: {fail, replace, append}, default=append}
-        How to behave if the table already exists.
-            fail: Raise a ValueError.
-            replace: Drop the table before inserting new values.
-            append: Insert new values to the existing table.
-    :param error_msg: bool Print out any error messages recieved; Default=False
-    :param progress_bar: bool Display progress bar; Default=True
-
-    :return: None
+    if_exists : str
+        Controls database update behaviors
+        Options: fail, replace, append; default=append
+        `fail`: Raise a ValueError.
+        `replace`: Drop the table before inserting new values.
+        `append`: Insert new values to the existing table.
+    msg : bool 
+        Print out any error messages recieved; Default=False
+    progress_bar : bool 
+        Display progress bar; Default=True
     """
     client = Client()   # Instantiate an instance of the client
 
@@ -73,9 +84,7 @@ def pipeline(
     if not loop_range and not to_date:
         raise ValueError("Must specify either loop_range or to_date")
     if to_date >= from_date:
-        raise ValueError(
-            "param 'to_date' occurs prior to param 'from_date'"
-        )
+        raise ValueError("'to_date' occurs prior to 'from_date'")
     
     # Convert timedelta to appropriate increments for use in pagination
     td = timedelta.Timedelta(from_date - to_date).total.minutes
@@ -84,7 +93,7 @@ def pipeline(
     loop_range = math.ceil((td / scalar) / loop_increment)
     last_loop_increment = math.ceil((td / scalar) % loop_increment)
 
-    print("Initializing data acquisition . . .")
+    logging.info("Initializing data acquisition . . .")
 
     for ticker in tickers:
         # Setup progress bar if progress_bar = True
@@ -101,7 +110,7 @@ def pipeline(
             now = from_date - dt.timedelta(minutes=(period_start * increment_dict[interval]))
             begin = from_date - dt.timedelta(minutes=(period_stop * increment_dict[interval]))
             df = client.get_kline_history(
-                ticker, begin, now, interval, error_msg=error_msg
+                ticker, begin, now, interval, msg=msg
             )
             if df.empty: # If the server gives us no data, break to avoid error
                 break
@@ -144,4 +153,3 @@ def pipeline(
                     bar.next()  # Moves progress bar along
         if progress_bar:
             bar.finish()
-
