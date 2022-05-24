@@ -35,7 +35,7 @@ extensions = [
     'sphinx.ext.autodoc'
 ]
 
-autodoc_mock_imports = ['numpy']
+autodoc_mock_imports = ['numpy', 'kucoin-cli']
 
 napoleon_google_docstring = False
 napoleon_use_param = False
