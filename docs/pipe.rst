@@ -1,4 +1,4 @@
 Kucoin Data Pipeline
 --------------------
-.. automodule:: kucoincli.pipe
+.. automodule:: pipe
    :members:
