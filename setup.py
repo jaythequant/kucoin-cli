@@ -41,6 +41,7 @@ setuptools.setup(
         "timedelta",
         "sqlalchemy",
         "progress",
+        "docutils==0.18.1",
     ],
     python_requires=">=3.9",
 )
