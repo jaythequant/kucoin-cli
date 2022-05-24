@@ -16,25 +16,30 @@ from kucoincli.utils._kucoinexceptions import ResponseError
 
 class Client(object):
 
-    """
-    KuCoin REST API wrapper -> https://docs.kucoin.com/#general
+    """KuCoin REST API wrapper -> https://docs.kucoin.com/#general
 
-    :param api_key: str (Optional) API key generated upon creation of API endpoint on
-    kucoin.com. If no API key is given, the user cannot access functions requiring
-    account level authorization, but can access endpoints that require general auth
-    such as kline historic data.
-    :param api_secret: str (Optional) Secret API sequence generated upon create of API
-    endpoint on kucoin.com. See api_key param docs for info on optionality of 
-    variable
-    :param api_passphrase: str (Optional) User created API passphrase. Passphrase is 
-    created by the user during API setup on kucoin.com. See api_key param docs for 
-    info on optionality of variable
-    :param sandbox: bool If sandbox = True, access a special papertrading API version
-    available for testing trading. For more details visit: https://sandbox.kucoin.com/
-    Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
-    regular kucoin API and may only be obtained from the sandbox website and (2)
-    that sandbox markets are completely seperate than kucoin's regular sites. It is
-    recommended that you not use sandbox as the data is highly corrupted.
+    Parameters
+    ----------
+    api_key : str 
+        (Optional) API key generated upon creation of API endpoint on
+        kucoin.com. If no API key is given, the user cannot access functions requiring
+        account level authorization, but can access endpoints that require general auth
+        such as kline historic data.
+    api_secret : str 
+        (Optional) Secret API sequence generated upon create of API
+        endpoint on kucoin.com. See api_keydocs for info on optionality of 
+        variable
+    api_passphrase : str 
+        (Optional) User created API passphrase. Passphrase is 
+        created by the user during API setup on kucoin.com. See api_keydocs for 
+        info on optionality of variable
+    sandbox : bool 
+        If sandbox = True, access a special papertrading API version
+        available for testing trading. For more details visit: https://sandbox.kucoin.com/
+        Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
+        regular kucoin API and may only be obtained from the sandbox website and (2)
+        that sandbox markets are completely seperate than kucoin's regular sites. It is
+        recommended that you not use sandbox as the data is highly corrupted.
     """
 
     REST_API_URL = "https://api.kucoin.com"
@@ -155,19 +160,25 @@ class Client(object):
         return df
 
     def get_accounts(
-        self, type:str=None, currency:str=None, balance:str=None
+        self, type:str=None, currency:str=None, balance:float=None
     ) -> pd.DataFrame:
-        """
-        Query API for open accounts filterd by type, currency or balance
+        """Query API for open accounts filterd by type, currency or balance.
 
-        :param type: Specify accounts type to filter returned data to
-            only accounts of that type. Defaults all account types.
-            types: main, margin, trade
-        :param currency: Specify currency account to return (e.g. BTC)
-            Defaults to None which returns all currencies
-        :param balance: Filter response by balance amount
+        Parameters
+        ----------        
+        type : str
+            Specify account type to restrict returned accounts to only that type
+            Defaults all account types. Options include: main, margin, trade.
+        currency : str
+            Specify currency (e.g. BTC) to restrict returned accounts to only that currency 
+            Defaults to None which returns all currencies.
+        balance : float 
+            Specify float value to restrict returns to only accounts with => values.
 
-        :return: Returns pandas dataframe with account details
+        Returns
+        -------
+        DataFrame
+            Returns pandas dataframe with account details.
         """
         path = "accounts"
         url, headers = self._request("get", path, signed=True)
@@ -193,13 +204,19 @@ class Client(object):
         return pd.Series(response.json()["data"])
 
     def create_account(self, type:str, currency:str) -> dict:
-        """
-        Create a new sub-account of account type `type` for currency `currency`
+        """Create a new sub-account of account type `type` for currency `currency`.
 
-        :param type: str Type of account to create. Options: main, trade, margin
-        :param currency: str Currency account type to create (e.g., BTC)
+        Parameters
+        ----------
+        type: str 
+            Type of account to create. Options: main, trade, margin.
+        currency : str 
+            Currency account type to create (e.g., BTC).
 
-        :return: Return JSON dictionary with confirmation message and new account ID
+        Returns
+        -------
+        dict
+            JSON dictionary with confirmation message and new account ID.
         """
         data = {"type": type, "currency": currency}
         path = "accounts"
@@ -219,18 +236,28 @@ class Client(object):
         return resp
 
     def recent_orders(self, page:int=1, pagesize:int=50) -> pd.DataFrame:
-        """
-        Returns pandas Series with last 24 hours of trades detailed 
-        - Max number of trades listed is 1000
-        - Max trades per page is 500
-        - Data is paganated into n pages displaying `pagesize` number of trades
+        """Returns pandas Series with last 24 hours of trades detailed.
 
-        :param page: int (Optional) JSON response is paganated. Use this variable
-        to control the page number viewed
-        :param pagesize: int (Optional) Max number of trades to display per response
-            Maximum trades per page is 500; Min is 10. Default = 50
+        Notes
+        -----
+            - Max trades per page is 500; Min trades per page is 10
+            - Max number of trades returned (across all pages) is 1000
+            - Data is paganated into n pages displaying `pagesize` number of trades
+
+        Parameters
+        ----------
+        page : int 
+            (Optional) JSON response is paganated. Use this variable
+            to control the page number viewed. Default value returns first 
+            page of paganated data.
+        pagesize : int 
+            (Optional) Max number of trades to display per response
+            Default `pagesize` is 50.
         
-        :return: Returns pandas DataFrame with complete list of trade details
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with complete list of trade details.
         """
         path = f"limit/orders?currentPage={page}&pageSize={pagesize}"
         url, headers = self._request("get", path, signed=True)
@@ -243,17 +270,27 @@ class Client(object):
     def transfer_funds(
         self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None
     ) -> dict:
-        """
-        Function for transferring funds between margin, trade and main accounts
+        """Function for transferring funds between margin, trade and main accounts.
 
-        :param currency: str Currency to transfer between accounts (e.g., BTC-USDT)
-        :param source_acc: str Source account type. Options are: Main, trade, and margin
-        :param dest_acc: str Destination account type. Options are: Main, trade, and margin
-        :param amount: float Positive float value. Must be of the transfer currency precision
-        :param oid: (Optional) str Unique order ID for identification of transfer
-            If not included, the function will autogenerate an integer based on the UNIX epoch
+        Parameters
+        ----------
+        currency : str 
+            Currency to transfer between accounts (e.g., BTC-USDT).
+        source_acc : str 
+            Source account type. Options are: Main, trade, and margin.
+        dest_acc : str 
+            Destination account type. Options are: Main, trade, and margin.
+        amount : float 
+            Positive float value. Must be of the transfer currency precision.
+        oid : str
+            (Optional) Unique order ID for identification of transfer. OID will 
+            autogenerate an integer based on the UNIX epoch if not explicitly 
+            given.
         
-        :return: JSON dictionary with transfer confirmtion and details
+        Returns
+        -------
+        dict
+            JSON dictionary with transfer confirmtion and details.
         """
         path = "accounts/inner-transfer"
         data = {
@@ -274,18 +311,24 @@ class Client(object):
         return resp.json()
 
     def repay_all(self, currency:str, size:float, priority:str="highest") -> dict:
-        """
-        Function for repaying all outstanding margin debt against a specified currency. 
-            Requires trade auth.
+        """Function for repaying all outstanding margin debt against specified currency. 
 
-        :param currency: str Specific currency to repay liabilities against (e.g., BTC)
-        :param size: float Total currency sum to repay. Specify as a multiple up to the max 
-            precision of the repaying currency
-        :param priority: str (Optional) Specify how to prioritize debt repayment
+        Parameters
+        ----------
+        currency : str 
+            Specific currency to repay liabilities against (e.g., BTC).
+        size : float 
+            Total currency sum to repay. Must be a multiple of currency max
+            precision.
+        priority : str 
+            (Optional) Specify how to prioritize debt repayment.
             - Highest: Repay highest interest rate loans first
             - Soonest: Repay nearest term loans first 
 
-        :return: Returns JSON dictionary with repayment confirmation and details
+        Returns
+        -------
+        dict
+            Returns JSON dictionary with repayment confirmation and details.
         """
         path = "margin/repay/all"
         data = {
@@ -305,13 +348,18 @@ class Client(object):
         return resp.json()
 
     def margin_balance(self, currency:str=None) -> dict:
-        """
-        Query outstanding margin balances
+        """Query all outstanding margin balances.
         
-        :param currency: str (Optional) Query specific currency (e.g., BTC)
-            If no currency is specified, query all currencies
+        Parameters
+        ----------
+        currency : str 
+            (Optional) Query specific currency (e.g., BTC).
+            If no currency is specified, query all currencies.
         
-        :return: JSON dictionary with margin balance details
+        Returns
+        -------
+        dict
+            JSON dictionary with margin balance details.
         """
         path = "margin/borrow/outstanding"
         if currency:
@@ -323,25 +371,38 @@ class Client(object):
     def get_kline_history(
         self, begin, end=None, interval:str="1day", msg:bool=False, warning:bool=True,
     ) -> pd.DataFrame:
-        """
-        Query historic OHLC(V) data for a ticker or list of tickers 
+        """Query historic OHLC(V) data for a ticker or list of tickers 
 
-        :param tickers: str or list Currency pair or list of pairs. Pair names must be
-            formatted in upper case (e.g. ETH-BTC)
-        :param begin: Can be string or datetime object. Note that server time is UTC
-            String format may include hours/minutes/seconds or may not
-            Examples: "YYYY-MM-DD" or "YYYY-MM-DD"
-        :param end: (Optional) Can be string or datetime object with the same
-            formatting rules as the begin parameter. If unspecified end will 
-            default to UTC time now
-        :param interval: Interval at which to return OHLCV data. Default = 1day
+        Notes
+        -----
+            Server time reported in UTC
+
+        Parameters
+        ----------
+        tickers : str or list 
+            Currency pair or list of pairs. Pair names must be formatted in upper 
+            case (e.g. ETH-BTC)
+        begin : str or datetime.datetime
+            Start time for queried date range. May be given either as a datetime object
+            or string. String format may include hours/minutes/seconds or may not
+            String format examples: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+        end : str or datetime.datetime
+            (Optional) Ending date for queried date range. This parameter has the same
+            formatting rules and flexibility of param `begin`. If left unspecified, end 
+            will default to the current UTC date and time stamp.
+        interval : str
+            Interval at which to return OHLCV data. Default: 1day
             Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
                 8hour, 12hour, 1day, 1week
-        :param progress_bar: bool Flag to enable progress bar. Does not work in 
-            Jupyter notebooks yet
-        :param msg: bool Flag to turn on helper messages
+        progress_bar : bool 
+            Flag to enable progress bar. Does not work in Jupyter notebooks yet
+        msg : bool 
+            Flag for turning on and off helper messages
 
-        :return: Returns pandas Dataframe indexed to datetime
+        Returns
+        -------
+        DataFrame
+            Returns pandas Dataframe indexed to datetime
         """
         if isinstance(begin, str):
             begin = _parse_date(begin)
@@ -438,12 +499,17 @@ class Client(object):
             return dfs[0]
 
     def get_order_history(self, symbol:str) -> pd.DataFrame:
-        """
-        Query API for 100 most recent filled trades for the specified symbol
+        """Query API the 100 most recent filled trades for a specified symbol
         
-        :param symbol: str Symbol to query order history for (e.g., BTC-USDT)
+        Parameters
+        ----------
+        symbol : str 
+            Symbol to query order history for (e.g., BTC-USDT)
 
-        :return: Returns pandas DataFrame with order history details
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with order history details
         """
         path = f"market/histories?symbol={symbol.upper()}"
         url = self._request("get", path)
@@ -460,7 +526,13 @@ class Client(object):
         return df
 
     def get_all_pairs(self) -> pd.DataFrame:
-        """Query API for dataframe containing detailed list of all currencies"""
+        """Query API for dataframe containing detailed list of all currencies
+        
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with with detailed list of all traded currencies
+        """
         path = "symbols"
         url = self._request("get", path)
         resp = requests.request("get", url)
@@ -472,13 +544,21 @@ class Client(object):
         return df
 
     def get_margin_data(self, currency:str) -> pd.DataFrame:
-        """
-        Query API for the last 300 filles in the lending and borrowing market for 
-        the specified currency. Response sorted descending on execution time
+        """Query API for the last 300 fills in the lending and borrowing market 
         
-        :param currency: str Target currency to pull lending/borrowing data (e.g., BTC)
+        Notes
+        -----
+            Response sorted descending on execution time
+        
+        Parameters
+        ----------
+        currency : str 
+            Target currency to pull lending/borrowing data (e.g., BTC)
 
-        :return: pandas DataFrame containing most recent 300 lending/borrowing rate details
+        Returns
+        -------
+        DataFrame
+            pandas DataFrame containing most recent 300 lending/borrowing rate details
         """
         path = f"margin/trade/last?currency={currency.upper()}"
         url = self._request("get", path)
@@ -494,13 +574,21 @@ class Client(object):
         return df
 
     def lending_rate(self, currency:str, term:int=None) -> pd.DataFrame:
-        """
-        Query API to obtain current a list of available margin terms
-        Sorted descending on seuqence of daily interest rate and term
+        """Query API to obtain current a list of available margin terms
 
-        :param currency: str Target currency to pull lending rates on (e.g., BTC)
+        Notes
+        -----
+            Sorted descending on sequence of daily interest rate and term
+
+        Parameters
+        ----------
+        currency : str 
+            Target currency to pull lending rates on (e.g., BTC)
         
-        :return: pandas DataFrame containing margin rate details
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame containing margin rate details
         """
         path = f"margin/market?currency={currency.upper()}"
         if term:
@@ -530,12 +618,17 @@ class Client(object):
         return df
 
     def get_trade_history(self, pair:str) -> pd.DataFrame:
-        """
-        Query API for most recent 100 filled trades for target pair
+        """Query API for most recent 100 filled trades for target pair
 
-        :param pair: str Target currency pair to query (e.g., BTC-USDT)
+        Parameters
+        ----------
+        pair : str 
+            Target currency pair to query (e.g., BTC-USDT)
         
-        :return: pandas Dataframe with filled trade details keyed to timestamp
+        Returns
+        -------
+        DataFrame
+            Returns pandas Dataframe with filled trade details keyed to timestamp
         """
         path = f"market/histories?symbol={pair.upper()}"
         url = self._request("get", path)
@@ -549,19 +642,30 @@ class Client(object):
         return df
 
     def get_markets(self) -> list:
-        """Returns list of markets on KuCoin"""
+        """Returns list of markets on KuCoin
+        
+        Returns
+        -------
+        list
+            Returns list of all KuCoin markets (i.e., NFT)
+        """
         path = "markets"
         url = self._request("get", path)
         resp = requests.request("get", url)
         return resp.json()["data"]
 
     def get_stats(self, pair:str) -> pd.Series:
-        """
-        Query API for OHLC(V) figures and assorted statistics
+        """Query API for OHLC(V) figures and assorted statistics on specified pair
 
-        :param pair: str Pair to obtain details for (e.g., BTC-USDT)
+        Parameters
+        ----------
+        pair : str 
+            Pair to obtain details for (e.g., BTC-USDT)
         
-        :return: pandas Series containing details for target currency
+        Returns
+        -------
+        pd.Series
+            Returns pandas Series containing details for target currency
         """
         path = f"market/stats?symbol={pair.upper()}"
         url = self._request("get", path)
@@ -580,14 +684,18 @@ class Client(object):
         return pd.Series(resp)
 
     def all_tickers(self, round:int=7) -> pd.DataFrame:
-        """
-        Query entire market for 24h trading statistics
+        """Query entire market for 24h trading statistics
         
-        :param round: int Round price data to n decimal places.
-            Used to supress scientific notation on output. 
-            Set to none to disable
+        Parameters
+        ----------
+        round : int 
+            Round price data to n decimal places. Used to supress 
+            scientific notation on output. Set to None to disable
 
-        :return: pandas DataFrame containing recent trade data for entire market
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame containing recent trade data for entire market
         """
         path = "market/allTickers"
         url = self._request("get", path)
@@ -611,12 +719,17 @@ class Client(object):
         return df
 
     def get_currency_detail(self, currency:str) -> pd.Series:
-        """
-        Query API for target currency info including precision and marginability
+        """Query API for target currency including precision and marginability
         
-        :param currency: str Target currency to obtain details
+        Parameters
+        ----------
+        currency : str 
+            Target currency to obtain details (e.g. BTC)
 
-        :return: pandas Series with target currency detail
+        Returns
+        -------
+        pd.Series
+            Return pandas Series with target currency detail
         """
         path = f"currencies/{currency.upper()}"
         url = self._request("get", path)
@@ -625,7 +738,18 @@ class Client(object):
         return pd.Series(resp)
 
     def get_full_detail(self, currency):
-        """Currently not fully implemented"""
+        """Currently not fully implemented
+
+        Parameters
+        ----------
+        currency : str
+            Target currency to obtain details (e.g., BTC)
+        
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with full details for target currency
+        """
         ### Needs further improvement from display standpoint.
         # Chains column return is a dictionary which is not good.
         path = f"currencies/{currency.upper()}"
@@ -636,16 +760,23 @@ class Client(object):
         return df
 
     def get_fiat_prices(self, fiat:str="USD", currency=None) -> pd.Series:
-        """
-        Obtain list of all currencies denominated in fiat.
+        """Obtain list of all traded currencies denominated in specified fiat
+        
         Useful for comparing prices across pairs with different quote currencies
         
-        :param fiat: (Optional) Base currency for normalized conversion. Default = USD
+        Parameters
+        ----------
+        fiat : str
+            (Optional) Base currency for normalized conversion. Default = USD
             Options: USD [default], EUR, 
-        :param currency: (Optional) str or list Specific currency or list of currencies to 
-            query. If no currency is specified the function will return all currencies
+        currency : str or list
+            (Optional) str or list Specific currency or list of currencies to query. 
+            If no currency is specified the function will return all traded currencies.
 
-        :return: Returns pandas Series containing all currencies or specified list of 
+        Returns
+        -------
+        pd.Series
+            Returns pandas Series containing all currencies or specified list of 
             currencies normalized to the fiat price.
         """
         if isinstance(currency, list):
@@ -660,7 +791,14 @@ class Client(object):
         return pd.Series(resp, name=f"{fiat} Denominated")
 
     def marginable_currency_info(self) -> pd.DataFrame:
-        """Get marginabile currencies with general (non-trade) details"""
+        """Get marginable currencies with general (non-trade) details
+        
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with non-trade related details for all
+            marginable details.
+        """
         df = self.get_currencies()
         try:
             df = df[df["isMarginEnabled"] == True]
@@ -692,12 +830,17 @@ class Client(object):
         return resp.json()["data"]
 
     def get_server_time(self, datetime_output:bool=False) -> int:
-        """
-        Return server time in UTC as unix timestamp at millisecond increment
+        """Return server time in UTC time to millisecond granularity
         
-        :param datetime_output: bool If true, convert UNIX epoch time to datetime object
+        Parameters
+        ----------
+        datetime_output : bool 
+            (Optional) If true, convert UNIX epoch integer to datetime object
         
-        :return: Returns time to the millisecond either as a UNIX epoch or datetime object
+        Returns
+        -------
+        int or datetime.datetime
+            Returns time to the millisecond either as a UNIX epoch or datetime object
         """
         path = "timestamp"
         url = self._request("get", path)
@@ -713,42 +856,59 @@ class Client(object):
 
     def limit_order(
         self, symbol:str, side:str, price:float, size:float=None, 
-        funds:float=None, client_oid:str=None, remark:str=None, 
+        funds:float=None, client_oid:int=None, remark:str=None, 
         tif:str="GTC", stp:str=None, cancel_after:int=None, 
         postonly:bool=False, hidden:bool=False, iceberg:bool=None, 
         visible_size:float=None,
     ):
-        """"
-        API command for placing limit trades in the trade account (non-margin). 
+        """"API command for placing limit trades in the trade account (non-margin). 
 
-        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
-        :param side: Side to execute trade on 
+        Parameters
+        ----------
+        symbol : str
+            Pair on which to execute trade (e.g., BTC-USDT)
+        side : str
+            Side on which to execute trade.
             Options: buy or sell
-        :param price: float Trades must be executed at this price or better
-        :param size: (Optional) User is required to either specify size or funds.
+        price : float 
+            Trades must be executed at this price or better
+        size : float
+            (Optional) Size in base currency to buy or sell 
             Size indicates the amount of base currency to buy or sell
             Size must be above baseMinSize and below baseMaxSize
             Size must be specified in baseIncrement symbol units
             Size must be a positive float value
-        :param funds: (Optional) User is required to either specify size or funds.
+            Note: User is required to either specify size or funds. 
+        funds : float
+            (Optional) Amount of funds in quote currency to buy or sell
+            Note: User is required to either specify size or funds.
             Funds indicates the amount of price [quote] currency to buy or sell.
             Funds must be above quoteMinSize and below quoteMaxSize
-            Size of funds must be specified in quoteIncrement symbol units
-            Funds must be a positive float value
-        :param client_oid: (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch
-        :param remark: (Optional) Add a remark to the order execution
-            Remarks may not exceed 100 utf8 characters
-        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
-            Options: CN, CO, CB, or DC 
-        :param tif: Dictate time in force order types. 
+            Size must be specified in quoteIncrement symbol units
+        client_oid : int
+            (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch if unspecified.
+        remark : str
+            (Optional) Add a remark to the order execution. Remarks may not 
+            exceed 100 utf-8 characters in length.
+        stp : str
+            (Optional) Self-trade prevention parameters. Primarily used by market makers.
+            Options: CN, CO, CB, or DC. Defaults to None.
+        tif : str
+            Dictate time in force order types. If unspecified order will be good-till-cancel. 
             Order types: GTC [default], GTT, IOC, or FOK
-        :param cancel_after: Cancel after n seconds. Requires that tif be GTT
-        :param postonly: bool If postonly is true, orders may only be executed 
-            at the maker fee. Orders that would receive taker will be rejected.
-        :param hidden: bool Orders will appear in orderbook
+        cancel_after : int
+            Cancel after n seconds. `cancel_after` requires that `tif` = GTT.
+        postonly : bool 
+            If postonly is true, orders may only be executed at the maker fee. 
+            Orders that would receive taker will be rejected.
+        hidden : bool 
+            If true, orders will not be publicly visible i.e. will not appear in orderbook.
         
-        :return order: JSON dict with order execution details
+        Returns
+        -------
+        dict
+            JSON dict with order execution details
         """
         data = {
             "symbol": symbol,
@@ -789,30 +949,42 @@ class Client(object):
         self, symbol:str, side:str, size:float=None, funds:float=None, 
         client_oid=None, remark=None, stp=None,
     ):
-        """
-        API command for executing market orders in the trade account (non-margin)
+        """API command for executing market orders in the trade account (non-margin).
         
-        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
-        :param side: Side to execute trade on 
+        Parameters
+        ----------
+        symbol : str
+            Pair on which to execute trade (e.g., BTC-USDT)
+        side : str
+            Side on which to execute trade.
             Options: buy or sell
-        :param size: (Optional) User is required to either specify size or funds.
+        size : float
+            (Optional) Size in base currency to buy or sell 
             Size indicates the amount of base currency to buy or sell
             Size must be above baseMinSize and below baseMaxSize
             Size must be specified in baseIncrement symbol units
             Size must be a positive float value
-        :param funds: (Optional) User is required to either specify size or funds.
+            Note: User is required to either specify size or funds. 
+        funds : float
+            (Optional) Amount of funds in quote currency to buy or sell
+            Note: User is required to either specify size or funds.
             Funds indicates the amount of price [quote] currency to buy or sell.
             Funds must be above quoteMinSize and below quoteMaxSize
-            Size of funds must be specified in quoteIncrement symbol units
-            Funds must be a positive float value
-        :param client_oid: Unique order ID for identification of orders. Defaults to
-            integer nonce based on unix epoch
-        :param remark: (Optional) Add a remark to the order execution
-            Remarks may not exceed 100 utf8 characters
-        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
-            Options: CN, CO, CB, or DC 
+            Size must be specified in quoteIncrement symbol units
+        client_oid : int
+            (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch if unspecified.
+        remark : str
+            (Optional) Add a remark to the order execution. Remarks may not 
+            exceed 100 utf-8 characters in length.
+        stp : str
+            (Optional) Self-trade prevention parameters. Primarily used by market makers.
+            Options: CN, CO, CB, or DC. Defaults to None.
 
-        :return order: JSON dict with order execution details
+        Returns
+        -------
+        dict
+            JSON dict with order execution details
         """
         data = {"side": side, "symbol": symbol, "type": self.ORDER_MARKET}
         if size:
@@ -838,33 +1010,48 @@ class Client(object):
         client_oid:str=None, remark:str=None, stp:str=None, mode:str="cross", 
         autoborrow:bool=True,
     ):
-        """
-        API command for placing market trades on margin. 
+        """API command for placing market trades on margin. 
 
-        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
-        :param side: Side to execute trade on 
+        Parameters
+        ----------
+        symbol : str
+            Pair on which to execute trade (e.g., BTC-USDT)
+        side : str
+            Side on which to execute trade.
             Options: buy or sell
-        :param size: (Optional) User is required to either specify size or funds.
+        size : float
+            (Optional) Size in base currency to buy or sell 
             Size indicates the amount of base currency to buy or sell
             Size must be above baseMinSize and below baseMaxSize
             Size must be specified in baseIncrement symbol units
             Size must be a positive float value
-        :param funds: (Optional) User is required to either specify size or funds.
+            Note: User is required to either specify size or funds. 
+        funds : float
+            (Optional) Amount of funds in quote currency to buy or sell
+            Note: User is required to either specify size or funds.
             Funds indicates the amount of price [quote] currency to buy or sell.
             Funds must be above quoteMinSize and below quoteMaxSize
-            Size of funds must be specified in quoteIncrement symbol units
-            Funds must be a positive float value
-        :param client_oid: Unique order ID for identification of orders. Defaults to
-            integer nonce based on unix epoch
-        :param remark: (Optional) Add a remark to the order execution
-            Remarks may not exceed 100 utf8 characters
-        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
-            Options: CN, CO, CB, or DC 
-        :param mode: User may trade on cross margin or isolated margin. Default = cross 
-        :param autoborrow: bool If true, system will automatically borrw at the
-            optimal interest rate prior to placing the requested order. 
+            Size must be specified in quoteIncrement symbol units
+        client_oid : int
+            (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch if unspecified.
+        remark : str
+            (Optional) Add a remark to the order execution. Remarks may not 
+            exceed 100 utf-8 characters in length.
+        stp : str
+            (Optional) Self-trade prevention parameters. Primarily used by market makers.
+            Options: CN, CO, CB, or DC. Defaults to None.
+        mode : str
+            User may trade on cross margin or isolated margin. 
+            Default mode = cross; Options: cross or isolated
+        autoborrow : bool 
+            If true, system will automatically borrow at the optimal interest rate prior 
+            to placing the requested order. 
 
-        :return order: JSON dict with order execution details
+        Returns
+        -------
+        dict
+            JSON dict with order execution details
         """
         data = {
             "side": side,
@@ -901,40 +1088,67 @@ class Client(object):
         tif:str="GTC", cancel_after:int=None, postonly:bool=False, 
         hidden:bool=False, iceberg:bool=None, visible_size:float=None,
     ) -> dict: 
-        """"
-        API command for placing margin limit trades. 
+        """API command for placing margin limit trades. 
 
-        :param symbol: Pair on which to execute trade (e.g., BTC-USDT)
-        :param side: Side to execute trade on 
+        Parameters
+        ----------
+        symbol : str
+            Pair on which to execute trade (e.g., BTC-USDT)
+        side : str
+            Side on which to execute trade.
             Options: buy or sell
-        :param price: float Trades must be executed at this price or better
-        :param size: (Optional) User is required to either specify size or funds.
+        price : float 
+            Trades must be executed at this price or better
+        size : float
+            (Optional) Size in base currency to buy or sell 
             Size indicates the amount of base currency to buy or sell
             Size must be above baseMinSize and below baseMaxSize
             Size must be specified in baseIncrement symbol units
             Size must be a positive float value
-        :param funds: (Optional) User is required to either specify size or funds.
+            Note: User is required to either specify size or funds. 
+        funds : float
+            (Optional) Amount of funds in quote currency to buy or sell
+            Note: User is required to either specify size or funds.
             Funds indicates the amount of price [quote] currency to buy or sell.
             Funds must be above quoteMinSize and below quoteMaxSize
-            Size of funds must be specified in quoteIncrement symbol units
-            Funds must be a positive float value
-        :param client_oid: (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch
-        :param remark: (Optional) Add a remark to the order execution
-            Remarks may not exceed 100 utf8 characters
-        :param stp: (Optional) Self-trade prevention. Primarily used by market makers
-            Options: CN, CO, CB, or DC 
-        :param mode: User may trade on cross margin or isolated margin. Default = cross 
-        :param autoborrow: bool If true, system will automatically borrw at the
-            optimal interest rate prior to placing the requested order. 
-        :param tif: Dictate time in force order types. 
+            Size must be specified in quoteIncrement symbol units
+        client_oid : int
+            (Optional) Unique order ID for identification of orders. 
+            Defaults to integer nonce based on unix epoch if unspecified.
+        remark : str
+            (Optional) Add a remark to the order execution. Remarks may not 
+            exceed 100 utf-8 characters in length.
+        stp : str
+            (Optional) Self-trade prevention parameters. Primarily used by market makers.
+            Options: CN, CO, CB, or DC. Defaults to None.
+        mode : str
+            User may trade on cross margin or isolated margin. 
+            Default mode = cross; Options: cross or isolated
+        autoborrow : bool 
+            If true, system will automatically borrow at the optimal interest rate prior 
+            to placing the requested order. 
+        tif : str
+            Dictate time in force order types. If unspecified order will be good-till-cancel. 
             Order types: GTC [default], GTT, IOC, or FOK
-        :param cancel_after: Cancel after n seconds. Requires that tif be GTT
-        :param postonly: bool If postonly is true, orders may only be executed 
-            at the maker fee. Orders that would receive taker will be rejected.
-        :param hidden: bool Orders will appear in orderbook
-        
-        :return order: JSON dict with order execution details
+        cancel_after : int
+            Cancel after n seconds. `cancel_after` requires that `tif` = GTT.
+        postonly : bool 
+            If postonly is true, orders may only be executed at the maker fee. 
+            Orders that would receive taker will be rejected.
+        hidden : bool 
+            If true, orders will not be publicly visible i.e. will not appear in orderbook.
+        iceberg : bool
+            If true, only a portion of the order will be visible in the orderbook. Use
+            `visible_size` to control percentage of order size visible.
+        visible_size : float
+            If `iceberg` is true, use this to set % of order visible in orderbook. Note that
+            more than 1/20th of order must be visible in the orderbook or the order will be 
+            rejected. To hide the full order use `hidden` parameter.
+
+        Returns
+        -------
+        dict
+            JSON dict with order execution details
         """
         if not size and not funds:
             raise ValueError("Must specify either size or funds parameter.")
