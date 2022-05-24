@@ -81,18 +81,18 @@ order = client.market_order(
 )
 ```
 
-#### Why [KuCoin](https://www.kucoin.com/)? 
+### Why [KuCoin](https://www.kucoin.com/)? 
 - _**For U.S. based customer this is one of the last remaining "chaotic" exchanges**_
 - Industry low transactions fees 
 - High liquidity across coins and a wide offering of shitcoins
 - Frequent additions of speculative coins 
 - Among the least regulated exchanges
 
-##### Distributions & Info:
+### Distributions & Info:
 - [Kucoin-Cli on PyPI](https://pypi.org/project/kucoin-cli/)
 - [Kucoin-Cli on Github](https://github.com/jaythequant/kucoin-cli)
 - [Kucoin API Documenation](https://docs.kucoin.com/#general)
 
-##### Consider donating:
+### Consider donating:
 - Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
 - Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
