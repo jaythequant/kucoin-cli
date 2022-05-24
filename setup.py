@@ -42,7 +42,6 @@ setuptools.setup(
         "sqlalchemy",
         "progress",
         "docutils>=0.17",
-        "sphinx==4.5.0",
         "myst-parser",
     ],
     python_requires=">=3.9",
