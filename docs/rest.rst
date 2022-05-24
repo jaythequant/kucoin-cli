@@ -1,4 +1,4 @@
 Kucoin REST API
 ---------------
-.. automodule:: kucoincli.client
+.. automodule:: client
    :members:
