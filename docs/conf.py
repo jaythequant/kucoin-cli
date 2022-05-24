@@ -31,10 +31,13 @@ release = '1.0.2'
 # extensions coming with Sphinx (named 'sphinx.ext.*') or your custom
 # ones.
 extensions = [
-    # 'myst_parser',
     'sphinx.ext.napoleon', 
     'sphinx.ext.autodoc'
 ]
+
+# napoleon_google_docstring = False
+# napoleon_use_param = False
+# napoleon_use_ivar = True
 
 source_suffix = {
     '.rst': 'restructuredtext',
