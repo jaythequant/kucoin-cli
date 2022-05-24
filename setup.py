@@ -42,7 +42,7 @@ setuptools.setup(
         "sqlalchemy",
         "progress",
         "sphinx",
-        "docutils==0.18.0",
+        "docutils>=0.17.0",
     ],
     python_requires=">=3.9",
 )
