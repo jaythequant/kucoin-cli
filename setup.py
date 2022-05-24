@@ -41,9 +41,8 @@ setuptools.setup(
         "timedelta",
         "sqlalchemy",
         "progress",
-        "sphinx==4.5.0",
-        "docutils",
-        "myst-parser",
+        "sphinx",
+        "docutils==0.18.0",
     ],
     python_requires=">=3.9",
 )
