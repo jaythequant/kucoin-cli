@@ -43,7 +43,7 @@ setuptools.setup(
         "progress",
         "docutils>=0.18.0",
         "sphinx==4.5.0",
-        "myst-parser==0.17.2",
+        "myst-parser",
     ],
     python_requires=">=3.9",
 )
