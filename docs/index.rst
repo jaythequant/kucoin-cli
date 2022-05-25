@@ -1,10 +1,18 @@
-.. include:: ../README.md
-   :parser: myst_parser.sphinx_
+.. kucoin-cli documentation master file
+
+.. include:: ../../README.rst
+
+Contents
+========
 
 .. toctree::
    :maxdepth: 2
-   :caption: Contents:
 
+   start
+   examples
+   constants
    rest
    pipe
-   i
+   endpoints
+   changelog
+   gendex
