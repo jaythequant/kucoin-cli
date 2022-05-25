@@ -41,7 +41,7 @@ setuptools.setup(
         "timedelta",
         "sqlalchemy",
         "progress",
-        "docutils>=0.17.0",
+        "renku-sphinx-theme",
     ],
     python_requires=">=3.9",
 )
