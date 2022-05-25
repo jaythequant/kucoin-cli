@@ -33,12 +33,12 @@ line data pipeline able to create and update your very own SQL database with alm
 
 Roadmap
 +++++++
-[ ] Finish writing documentation
-[ ] Clean-up websocket implemention and improve ease of use
-[ ] Add stop-loss order capabilities
-[ ] Add schema configuration functionality to data pipeline
-[ ] Add futures API access
-[ ] Develop an asynchronous REST client
+| [ ] Finish writing documentation
+| [ ] Clean-up websocket implemention and improve ease of use
+| [ ] Add stop-loss order capabilities
+| [ ] Add schema configuration functionality to data pipeline
+| [ ] Add futures API access
+| [ ] Develop an asynchronous REST client
 
 Features
 ++++++++
