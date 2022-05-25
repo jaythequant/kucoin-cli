@@ -1,6 +1,6 @@
-==================================================
-Kucoin-Cli: Pandas-oriented REST and Websocket API
-==================================================
+======================================================
+Kucoin-Cli: Pandas-oriented REST and Websocket Wrapper
+======================================================
 A data science focused Python API implementation
 ------------------------------------------------
 
@@ -16,40 +16,40 @@ A data science focused Python API implementation
 
 Why use this library over `python-kucoin <https://github.com/sammchardy/python-kucoin>`_ or the `official SDK <https://github.com/Kucoin/kucoin-python-sdk>`_?
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+
 This package was written by a data analyst for data analysts. Specifically designed for fast, efficient data acquisition and high complexity 
 trades such as HFT, market-making, and long-short strategies. Essentially all REST endpoints output to pandas Dataframes, key data acquisition 
 functions include rich features for acquiring large amounts of historic data easily, and the trading side of the package specializes in the 
-managment of margin where I found other packages to be lacking. Of special note, OHLC(V) acquisition from the KuCoin REST API is a 
+managment of margin where I found other packages to be lacking. Of special note, OHLCV acquisition from the KuCoin REST API is a 
 bit of a bear to handle as you can only query a single ticker at a time to a max of 1500 bars. Thanks to the magic of pandas, this 
 package has a one-liner capable of calling as many tickers or bars as desired. Perhaps best of all, the package comes with a fully-built one-
 line data pipeline able to create and update your very own SQL database with almost no effort. 
 
-I have used this package to:
-- Automate the generation of a PSQL database with over 400M rows of OHLC(V) data
-- Take a complex statistical arbitrage trading algorithm live via websockets
-- Feed and train ML/RL algorithms for future deployment into live trading sessions
+* Automate the generation of a PSQL database with over 400M rows of OHLCV data
+* Take complex trading algorithms live via websockets
+* Quickly obtain, clean, and organize large amounts of data for use in RL/ML models
 
-**Disclaimer: This is an unofficial implementation of the `KuCoin Rest and Websocket API v2 <https://docs.kucoin.com/#general>`_. Use this package at your own risk.**
+**Disclaimer: This is an unofficial implementation of the KuCoin Rest and Websocket API v2. Use this package at your own risk.**
 
 Roadmap
 +++++++
-- [ ] Clean-up websocket implemention and improve ease of use
-- [x] Write better docstrings and update features for lesser used functions
-- [ ] Add stop-loss order capabilities
-- [ ] Add schema configuration functionality to data pipeline
-- [ ] Add futures API access
-- [ ] Develop an asynchronous REST client
+[ ] Finish writing documentation
+[ ] Clean-up websocket implemention and improve ease of use
+[ ] Add stop-loss order capabilities
+[ ] Add schema configuration functionality to data pipeline
+[ ] Add futures API access
+[ ] Develop an asynchronous REST client
 
 Features
 ++++++++
-- One-line database pipeline. Open a high stability pipe from kucoin's OHLC(V) endpoint to a database of your creation
-  - Automatically creates database or adds to pre-existing db
-  - Can handle multi-day data acqusitions sessions through dynamic timeout mechanism
-- Feature rich OHLC(V) acquisition
-  - Query multiple currencies simultaneously 
-  - Obtain clean pandas DataFrame output of paganated data 
-- Access to 99%+ of REST and Websocket endpoints
-- Fully implemented margin trading features
+* One-line database pipeline. Open a high stability pipe from kucoin's OHLC(V) endpoint to a database of your creation
+  * Automatically creates database or adds to pre-existing db
+  * Can handle multi-day data acqusitions sessions through dynamic timeout mechanism
+* Feature rich OHLC(V) acquisition
+  * Query multiple currencies simultaneously 
+  * Obtain clean pandas DataFrame output of paganated data 
+* Access to 99%+ of REST and Websocket endpoints
+* Fully implemented margin trading features
 
 Quickstart
 ++++++++++
@@ -58,11 +58,13 @@ Quickstart
 3. Download kucoin-cli using pip
 
 .. code-block:: bash
+
     pip install kucoin-cli
 
 4. Try out some functions! 
 
 .. code-block:: python
+
   import kucoincli.client as Client
 
   # Your own credentials here
@@ -104,21 +106,21 @@ Quickstart
 
 Why `KuCoin <https://www.kucoin.com/>`_? 
 ++++++++++++++++++++++++++++++++++++++++
-- **For U.S. based customer this is one of the last remaining "chaotic" exchanges**
-- Industry low transactions fees 
-- High liquidity across coins and a wide offering of shitcoins
-- Frequent additions of speculative coins 
-- Among the least regulated exchanges
+* **For U.S. based customer this is one of the last remaining "chaotic" exchanges**
+* Industry low transactions fees 
+* High liquidity across coins and a wide offering of shitcoins
+* Frequent additions of speculative coins 
+* Among the least regulated exchanges
 
 Distributions & Info:
 +++++++++++++++++++++
-- `KuCoin-Cli Documentation on readthedocs <https://kucoin-cli.readthedocs.io/en/latest/>`_
-- `Kucoin-Cli on PyPI <https://pypi.org/project/kucoin-cli/>`_
-- `Kucoin-Cli on Github <https://github.com/jaythequant/kucoin-cli>`_
-- `Official Kucoin API Documenation <https://docs.kucoin.com/#general>`_
+* `KuCoin-Cli Documentation on readthedocs <https://kucoin-cli.readthedocs.io/en/latest/>`_
+* `Kucoin-Cli on PyPI <https://pypi.org/project/kucoin-cli/>`_
+* `Kucoin-Cli on Github <https://github.com/jaythequant/kucoin-cli>`_
+* `Official Kucoin API Documenation <https://docs.kucoin.com/#general>`_
 
 Consider donating:
 ++++++++++++++++++
 
-- Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
-- Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
+| Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
+| Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
