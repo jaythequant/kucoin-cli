@@ -393,7 +393,7 @@ class Client(object):
         interval : str
             Interval at which to return OHLCV data. Default: 1day
             Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
-                8hour, 12hour, 1day, 1week
+            8hour, 12hour, 1day, 1week
         progress_bar : bool 
             Flag to enable progress bar. Does not work in Jupyter notebooks yet
         msg : bool 
