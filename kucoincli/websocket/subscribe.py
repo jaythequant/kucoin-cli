@@ -70,3 +70,7 @@ class Subscriptions(Client):
                 6hour, 8hour, 12hour, 1day, 1week
         """
         return f"/market/candles:{symbol}_{interval}"
+
+    def _get_timeout(self):
+        resp = self.get_socket_detail()
+        return resp

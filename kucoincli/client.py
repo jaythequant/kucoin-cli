@@ -1,3 +1,4 @@
+from enum import auto
 import time
 import requests
 import base64, hashlib, hmac
@@ -369,7 +370,8 @@ class Client(object):
         return resp.json()["data"]
 
     def get_kline_history(
-        self, begin, end=None, interval:str="1day", msg:bool=False, warning:bool=True,
+        self, tickers:str or list, begin:dt.datetime or str, end:dt.datetime or str=None, 
+        interval:str="1day", msg:bool=False, warning:bool=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -393,7 +395,7 @@ class Client(object):
         interval : str
             Interval at which to return OHLCV data. Default: 1day
             Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
-            8hour, 12hour, 1day, 1week
+                8hour, 12hour, 1day, 1week
         progress_bar : bool 
             Flag to enable progress bar. Does not work in Jupyter notebooks yet
         msg : bool 
@@ -525,13 +527,36 @@ class Client(object):
         df.set_index("time", inplace=True)
         return df
 
-    def get_all_pairs(self) -> pd.DataFrame:
-        """Query API for dataframe containing detailed list of all currencies
+    def symbols(self, pair:str or list=None) -> pd.DataFrame or pd.Series:
+        """Query API for dataframe containing detailed list of trading pairs
+
+        This is the primary trading pair detail endpoint for users. The returned values
+        outline, in details, the trading parameters neccesary to successfully
+        execute trades. Several other pair, currency, and market detail endpoints are available,
+        but these endpoints primarily contain duplicate information to this detail or 
+        offer information largely unrelated to trade execution.
+
+        Notes
+        -----
+        There are several other currency detail endpoints: 
+        * `.get_currencies()`
+        * `.get_currency_detail()
+        * `.all_tickers`
+        * `.get_marginable_details()`
         
+        Parameters
+        ----------
+        currency : str
+            (Optional) Specify a single pair or list of pairs to query.
+            If currency = None, return a dataframe of all trading pairs.
+
         Returns
         -------
-        DataFrame
-            Returns pandas DataFrame with with detailed list of all traded currencies
+        DataFrame or Series
+            Returns pandas DataFrame with with detailed list of all traded pairs. 
+            If a list of pairs is provided in the `currency` parameter, return a
+            DataFrame containing only the specified pairs. If a single pair is 
+            provided, return a pandas Series with the pair trade details.
         """
         path = "symbols"
         url = self._request("get", path)
@@ -540,7 +565,11 @@ class Client(object):
             return print(resp.status_code)
         resp = resp.json()
         df = pd.DataFrame(resp["data"]).set_index("symbol")
-        df.iloc[:, 5:14] = df.iloc[:, 5:14].astype(float)
+        if pair:
+            try:
+                df = df.loc[pair, :]
+            except KeyError as e: 
+                raise KeyError("Keys not found in list frame", e)
         return df
 
     def get_margin_data(self, currency:str) -> pd.DataFrame:
@@ -831,6 +860,14 @@ class Client(object):
 
     def get_server_time(self, datetime_output:bool=False) -> int:
         """Return server time in UTC time to millisecond granularity
+
+        Notes
+        -----
+            This function will return the KuCoin official server time in UTC as unix epoch.
+            Returned time is an integer value representing time to millisecond precision. 
+            This function should be used to sync client and server time as orders submitted 
+            with a timestamp over 5 seconds old will be rejected by the server. In some cases,
+            client time can lag server time resulting in the server rejected commands as stale.
         
         Parameters
         ----------
@@ -873,18 +910,18 @@ class Client(object):
         price : float 
             Trades must be executed at this price or better
         size : float
-            (Optional) Size in base currency to buy or sell 
-            Size indicates the amount of base currency to buy or sell
-            Size must be above baseMinSize and below baseMaxSize
-            Size must be specified in baseIncrement symbol units
-            Size must be a positive float value
-            Note: User is required to either specify size or funds. 
+            (Optional) Size in base currency to buy or sell.
+            | Size indicates the amount of base currency to buy or sell
+            | Size must be above baseMinSize and below baseMaxSize
+            | Size must be specified in baseIncrement symbol units
+            | Size must be a positive float value
+            | Note: User is required to either specify size or funds. 
         funds : float
-            (Optional) Amount of funds in quote currency to buy or sell
-            Note: User is required to either specify size or funds.
-            Funds indicates the amount of price [quote] currency to buy or sell.
-            Funds must be above quoteMinSize and below quoteMaxSize
-            Size must be specified in quoteIncrement symbol units
+            (Optional) Amount of funds in quote currency to buy or sell.
+            | Note: User is required to either specify size or funds.
+            | Funds indicates the amount of price [quote] currency to buy or sell.
+            | Funds must be above quoteMinSize and below quoteMaxSize
+            | Size must be specified in quoteIncrement symbol units
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -959,18 +996,18 @@ class Client(object):
             Side on which to execute trade.
             Options: buy or sell
         size : float
-            (Optional) Size in base currency to buy or sell 
-            Size indicates the amount of base currency to buy or sell
-            Size must be above baseMinSize and below baseMaxSize
-            Size must be specified in baseIncrement symbol units
-            Size must be a positive float value
-            Note: User is required to either specify size or funds. 
+            (Optional) Size in base currency to buy or sell.
+            | Size indicates the amount of base currency to buy or sell
+            | Size must be above baseMinSize and below baseMaxSize
+            | Size must be specified in baseIncrement symbol units
+            | Size must be a positive float value
+            | Note: User is required to either specify size or funds. 
         funds : float
-            (Optional) Amount of funds in quote currency to buy or sell
-            Note: User is required to either specify size or funds.
-            Funds indicates the amount of price [quote] currency to buy or sell.
-            Funds must be above quoteMinSize and below quoteMaxSize
-            Size must be specified in quoteIncrement symbol units
+            (Optional) Amount of funds in quote currency to buy or sell.
+            | Note: User is required to either specify size or funds.
+            | Funds indicates the amount of price [quote] currency to buy or sell.
+            | Funds must be above quoteMinSize and below quoteMaxSize
+            | Size must be specified in quoteIncrement symbol units
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1012,6 +1049,17 @@ class Client(object):
     ):
         """API command for placing market trades on margin. 
 
+        Notes
+        -----
+            Due to a glitch in KuCoin's API handling of autoborrowed funds, the server
+            will sometimes return the following:
+                `{'code': '300000', 'msg': 'Order funds invalid.'}`
+            This issue arises with certain combinations of side, size/funds and only 
+            while autoborrow is true. I am currently working on a way around this, but 
+            as the glitch appears to be server side there may be no elegant solution.
+            Users are recommended to either use the `margin_limit_order` function which works
+            as intended or to manually borrow funds and set autoborrow to False.
+
         Parameters
         ----------
         symbol : str
@@ -1020,18 +1068,18 @@ class Client(object):
             Side on which to execute trade.
             Options: buy or sell
         size : float
-            (Optional) Size in base currency to buy or sell 
-            Size indicates the amount of base currency to buy or sell
-            Size must be above baseMinSize and below baseMaxSize
-            Size must be specified in baseIncrement symbol units
-            Size must be a positive float value
-            Note: User is required to either specify size or funds. 
+            (Optional) Size in base currency to buy or sell.
+            | Size indicates the amount of base currency to buy or sell
+            | Size must be above baseMinSize and below baseMaxSize
+            | Size must be specified in baseIncrement symbol units
+            | Size must be a positive float value
+            | Note: User is required to either specify size or funds. 
         funds : float
-            (Optional) Amount of funds in quote currency to buy or sell
-            Note: User is required to either specify size or funds.
-            Funds indicates the amount of price [quote] currency to buy or sell.
-            Funds must be above quoteMinSize and below quoteMaxSize
-            Size must be specified in quoteIncrement symbol units
+            (Optional) Amount of funds in quote currency to buy or sell.
+            | Note: User is required to either specify size or funds.
+            | Funds indicates the amount of price [quote] currency to buy or sell.
+            | Funds must be above quoteMinSize and below quoteMaxSize
+            | Size must be specified in quoteIncrement symbol units
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1100,18 +1148,18 @@ class Client(object):
         price : float 
             Trades must be executed at this price or better
         size : float
-            (Optional) Size in base currency to buy or sell 
-            Size indicates the amount of base currency to buy or sell
-            Size must be above baseMinSize and below baseMaxSize
-            Size must be specified in baseIncrement symbol units
-            Size must be a positive float value
-            Note: User is required to either specify size or funds. 
+            (Optional) Size in base currency to buy or sell.
+            | Size indicates the amount of base currency to buy or sell
+            | Size must be above baseMinSize and below baseMaxSize
+            | Size must be specified in baseIncrement symbol units
+            | Size must be a positive float value
+            | Note: User is required to either specify size or funds. 
         funds : float
-            (Optional) Amount of funds in quote currency to buy or sell
-            Note: User is required to either specify size or funds.
-            Funds indicates the amount of price [quote] currency to buy or sell.
-            Funds must be above quoteMinSize and below quoteMaxSize
-            Size must be specified in quoteIncrement symbol units
+            (Optional) Amount of funds in quote currency to buy or sell.
+            | Note: User is required to either specify size or funds.
+            | Funds indicates the amount of price [quote] currency to buy or sell.
+            | Funds must be above quoteMinSize and below quoteMaxSize
+            | Size must be specified in quoteIncrement symbol units
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
