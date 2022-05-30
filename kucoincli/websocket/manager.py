@@ -19,7 +19,6 @@ async def connection_manager(socket, timeout=5000):
     keep_waiting = True
     try:
         while keep_waiting:
-            print(1)
             last_ping = time.time()
             if time.time() - last_ping > timeout:
                 await _send_ping(socket)
