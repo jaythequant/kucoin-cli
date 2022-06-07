@@ -3,7 +3,7 @@ import setuptools
 with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-version = "1.0.4"
+version = "1.0.6"
 
 setuptools.setup(
     name="kucoin-cli",
@@ -41,7 +41,6 @@ setuptools.setup(
         "timedelta",
         "sqlalchemy",
         "progress",
-        "renku-sphinx-theme",
     ],
     python_requires=">=3.8",
 )
