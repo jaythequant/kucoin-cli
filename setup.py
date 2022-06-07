@@ -43,5 +43,5 @@ setuptools.setup(
         "progress",
         "renku-sphinx-theme",
     ],
-    python_requires=">=3.9",
+    python_requires=">=3.8",
 )
