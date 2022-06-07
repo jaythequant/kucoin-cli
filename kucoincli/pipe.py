@@ -4,6 +4,7 @@ import timedelta
 import math
 import datetime as dt
 from kucoincli.client import Client
+from kucoincli.utils import _parse_date
 import logging
 
 ###################################################################################################################
@@ -16,9 +17,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 def pipeline(
-    tickers:list or list, schema:str, engine, interval:str, from_date, to_date=None, 
-    loop_range:int=None, loop_increment:int=1500, chunk_size:int=500, 
-    if_exists:str="append", msg:bool=False, progress_bar:bool=True,
+    tickers:str or list, schema:str, engine, interval:str, from_date:str or dt.datetime, 
+    to_date:str or dt.datetime=None, loop_range:int=None, loop_increment:int=1500, 
+    chunk_size:int=500, if_exists:str="append", msg:bool=False, progress_bar:bool=True,
 ) -> None:
     """Data acquisition pipeline from KuCoin OHLCV API call ----> SQL database.
 
@@ -39,10 +40,11 @@ def pipeline(
         OHLCV interval frequency. 
         Options: 1min, 3min, 5min, 15min, 30min, 1hour, 
         2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week
-    from_date : datetime.datetime
-        Date at which to start date range.
-    to_date: datetime.datetime
-        Date at which to end date range. If both to_date and start_date are left blank 
+    from_date : datetime.datetime or str
+        Date at which to start date range. See `kucoincli.client.get_kline_data` for formatting.
+    to_date: datetime.datetime or str
+        Date at which to end date range. If both to_date and start_date are left blank. 
+        See `kucoincli.client.get_kline_data` for formatting.
     loop_range: int Total number of times to loop through API calls. 
         For further context, the Kucoin OHLCV data is paginated with a max return of 1500 rows of 
         OHLCV data of any given interval. Pipeline executes n calls per asset of increment x.
@@ -74,6 +76,13 @@ def pipeline(
         "1hour": 60, "2hour": 120, "4hour": 240, "6hour": 360, 
         "8hour": 480, "12hour": 720, "1day": 1440, "1week": 10_080
     }
+    
+    # Parse string dates
+    if isinstance(begin, str):
+        begin = _parse_date(begin)
+    if end:
+        if isinstance(end, str):
+            end = _parse_date(end)
 
     # Light error handling to ensure parameter entry is correct
     if loop_range:
