@@ -1,4 +1,3 @@
-from enum import auto
 import time
 import requests
 import base64, hashlib, hmac
@@ -8,7 +7,6 @@ import calendar
 import datetime as dt
 import warnings
 import logging
-import sys
 
 from kucoincli.utils._helpers import _parse_date
 from kucoincli.utils._helpers import _parse_interval
@@ -73,16 +71,6 @@ class Client(object):
             self.API_URL = self.SAND_BOX_URL
         else:
             self.API_URL = self.REST_API_URL
-
-        # Logging setup
-        logging.basicConfig(
-            level=logging.INFO,
-            format="%(asctime)s  %(funcName)s [%(levelname)s] %(message)s",
-            handlers=[
-                # logging.FileHandler("log.log"),
-                logging.StreamHandler(sys.stdout)
-            ]
-        )
 
     def _compact_json_dict(self, data:dict):
         """Convert dict to compact json"""
@@ -369,9 +357,9 @@ class Client(object):
         resp = requests.request("get", url, headers=headers)
         return resp.json()["data"]
 
-    def get_kline_history(
+    def ohlcv(
         self, tickers:str or list, begin:dt.datetime or str, end:dt.datetime or str=None, 
-        interval:str="1day", msg:bool=False, warning:bool=True,
+        interval:str="1day", warning:bool=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -453,24 +441,24 @@ class Client(object):
                 if resp.status_code == 200:
                     pass
                 elif resp.status_code == 429:
-                    if msg:
-                        print("\nRate limit trigger")
+                    logging.debug("Server requires 10 second timeout")
                     time.sleep(11)
-                    if msg:
-                        print("Re-establishing stream . . . ")
+                    logging.debug("Re-establishing stream . . . ")
                     resp = requests.request("get", url)
                     if resp.status_code == 429:
-                        if msg:
-                            print("\nHard reset initiated.")
+                        logging.debug("Server requires hard timeout: 3 minute delay.")
                         time.sleep(180)
+                        logging.debug("Re-establishing stream . . . ")
                         resp = requests.request("get", url)
                         if resp.status_code == 429:
+                            logging.debug("Server requires hard timeout: 5 minute delay.")
                             time.sleep(300)
+                            logging.debug("Re-establishing stream . . . ")
                             resp = requests.request("get", url)
                         else:
                             pass
                 else:
-                    print(f"Failed reponse. Returned code: {resp.status_code}")
+                    logging.error(f"Failed reponse. Returned code: {resp.status_code}")
                 
                 resp = resp.json()
                 try:
@@ -517,12 +505,12 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.json())
+            return logging.error(resp.json())
         resp = resp.json()
         try:
             df = pd.DataFrame(resp["data"])
         except KeyError:
-            return print("No message data received.")
+            return logging.error("No message data received.")
         df["time"] = pd.to_datetime(df["time"], origin="unix")
         df.set_index("time", inplace=True)
         return df
@@ -562,7 +550,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.status_code)
+            return logging.error(resp.status_code)
         resp = resp.json()
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
@@ -593,7 +581,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp)
+            return logging.error(resp)
         resp = resp.json()["data"]
         df = pd.DataFrame(resp)
         if df.empty:
@@ -625,7 +613,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.status_code)
+            return logging.error(resp.status_code)
         resp = resp.json()["data"]
         if df.empty:
             ResponseError("No results for currency and term combination")
@@ -638,7 +626,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.status_code)
+            return logging.error(resp.status_code)
         resp = resp.json()
         df = pd.DataFrame(resp["data"])
         marginTrue = df["isMarginEnabled"] == True
@@ -663,7 +651,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.status_code)
+            return logging.error(resp.status_code)
         resp = resp.json()
         df = pd.DataFrame(resp["data"])
         df["time"] = pd.to_datetime(df["time"], origin="unix")
@@ -855,7 +843,7 @@ class Client(object):
             url, headers = self._request("post", path, signed=is_signed)
             resp = requests.request("post", url, headers=headers)
         if resp.status_code != 200:
-            print(resp.status_code)
+            logging.error(resp.status_code)
         return resp.json()["data"]
 
     def get_server_time(self, datetime_output:bool=False) -> int:
@@ -883,7 +871,7 @@ class Client(object):
         url = self._request("get", path)
         resp = requests.request("get", url)
         if resp.status_code != 200:
-            return print(resp.status_code)
+            return logging.error(resp.status_code)
         resp = resp.json()["data"]
         if datetime_output:
             resp = dt.datetime.utcfromtimestamp(

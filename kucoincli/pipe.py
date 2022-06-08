@@ -1,71 +1,89 @@
-from sqlalchemy import Float, Text, DateTime
+from sqlalchemy import Float, DateTime
 from progress.bar import Bar
+import sqlalchemy
 import timedelta
 import math
 import datetime as dt
 from kucoincli.client import Client
-from kucoincli.utils import _parse_date
+from kucoincli.utils._helpers import _parse_date
 import logging
+import psycopg2
+import time
 
-###################################################################################################################
-# Data pipeline connecting kucoin historic OHLCV data (acquired via API) to SQL schema through SQLAlchemy engine. #
-###################################################################################################################
-
-# Features I still want to add...
-# Progress bar does not reach 100% if end of data is found (needs fixed)
-
-logger = logging.getLogger(__name__)
+###############################################################################################################
+# Data pipeline connecting kucoin historic OHLCV data (acquired via API) to SQL db through SQLAlchemy engine. #
+###############################################################################################################
 
 def pipeline(
-    tickers:str or list, schema:str, engine, interval:str, from_date:str or dt.datetime, 
-    to_date:str or dt.datetime=None, loop_range:int=None, loop_increment:int=1500, 
-    chunk_size:int=500, if_exists:str="append", msg:bool=False, progress_bar:bool=True,
+    tickers:str or list, engine:sqlalchemy.engine, end:str or dt.datetime, 
+    start:str or dt.datetime=None, interval:str="1day", loop_range:int=None, 
+    loop_increment:int=1500, chunk_size:int=500, schema:str=None, 
+    if_exists:str="append", progress_bar:bool=True,
 ) -> None:
-    """Data acquisition pipeline from KuCoin OHLCV API call ----> SQL database.
+    """Data acquisition pipeline from KuCoin OHLCV API call -> SQL database.
+
+    Leverage `pandas`, `sqlalchemy`, and `kucoincli.client` to obtain, format,
+    and catalogue OHLCV data in a permanent database. 
 
     Notes
     -----
-        Be aware that KuCoin servers are on UTC time. If this is not accounted for
-        returns may be inaccurate.
+        * Be aware that KuCoin servers are on UTC time. If this is not accounted for
+        returns may be inaccurate. Returns may be unexpected when using naive
+        datetime objects rather than strings for the `start` or `end` arguments.
+        * This pipeline is a wrapper utilizing the `kucoincli.client` function 
+        `ohlcv`. For details on the underlying data acquisition, reference 
+        the docstring.
 
     Parameters
     ----------
     tickers : str or list
-        Ticker or list of tickers to call Kucoin API for OHLCV data (e.g., BTC-USDT)
-    schema : str 
-        SQL schema in which to store acquired OHLCV data.
-    engine : _engine.Engine
-        SQLAlchemy engine (created using "create_engine" function).
+        Ticker or list of tickers to call Kucoin API for OHLCV data (e.g., BTC-USDT).
+    engine : sqlalchemy.engine
+        SQLAlchemy engine. For further information about engine objects review the
+        `sqlalchemy.create_engine` documentation.
+    end : datetime.datetime or str
+        Latest date in range. Date input may be either string (e.g., YYYY-MM-DD or 
+        YYYY-MM-DD HH:MM:SS) or a datetime object. See `kucoincli.client.ohlcv` 
+        for further formatting details. 
+    start : datetime.datetime or str
+        (Optional) Earliest date in range. User must input either `start` or `loop_range`.
+        See `end` for formatting details.
     interval : str
-        OHLCV interval frequency. 
-        Options: 1min, 3min, 5min, 15min, 30min, 1hour, 
-        2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week
-    from_date : datetime.datetime or str
-        Date at which to start date range. See `kucoincli.client.get_kline_data` for formatting.
-    to_date: datetime.datetime or str
-        Date at which to end date range. If both to_date and start_date are left blank. 
-        See `kucoincli.client.get_kline_data` for formatting.
-    loop_range: int Total number of times to loop through API calls. 
-        For further context, the Kucoin OHLCV data is paginated with a max return of 1500 rows of 
-        OHLCV data of any given interval. Pipeline executes n calls per asset of increment x.
-        Where n = loop_range and x = loop_increment. 
-        Note: Loop range parameter will is invalid unless to_date = None
+        (Optional) OHLCV interval frequency. Default=1day. Options: 1min, 3min, 5min, 15min, 
+        30min, 1hour, 2hour, 4hour, 6hour, 8hour, 12hour, 1day, 1week
+    loop_range : int 
+        (Optional) Rather than specifying an earliest date, users may specify a latest date and 
+        obtain data in `loop_increment` chunks for `loop_range` API calls. For example, if we 
+        specify `end="2022-01-01"`, `loop_increment=100`, and `loop_range=10`, the pipeline
+        will call 1000 bars at `interval` granularity starting with 2022-01-01 and walking 
+        backwards.
+        | Note: `loop_range` will be ignored unless `end=None`.
     loop_increment : int 
-        Increment control number of rows of OHLCV data obtained per call. Max rows 
-        allowed by Kucoin per call is 1500. This is the default increment in function.
+        (Optional) Used to control the max number bars of OHLCV data retrieved per call. 
+        Max bars per call is 1500. Default=1500.
+    schema : str 
+        (Optional) SQL schema in which to store acquired OHLCV data. Default=None.
+        SQLite databases may not use schema argument. mySQL or psql databases will 
+        utilize default scheme if `schema=None`. For further information review
+        `pandas.to_sql`.
     chunk_size : int 
-        Chunksize for use by Pandas to_sql function. Chunksize may be 
-        optimized for better read/write performance to SQL database.
-    if_exists : str
-        Controls database update behaviors
-        Options: fail, replace, append; default=append
-        `fail`: Raise a ValueError.
-        `replace`: Drop the table before inserting new values.
-        `append`: Insert new values to the existing table.
-    msg : bool 
-        Print out any error messages recieved; Default=False
+        (Optional) Chunksize for use by `pandas.to_sql`. Chunksize may be 
+        optimized for better read/write performance to SQL database. 
+        See `pandas.to_sql` documentation for further details.
     progress_bar : bool 
-        Display progress bar; Default=True
+        (Optional) Displays a loading bar and timer for each asset queried.
+        Default=True
+    if_exists : str
+        (Optional) Control the pipelines behavior if a table already exists in the 
+        defined database/schema. Default=`append`. Options: `fail`, `replace`, `append`.
+        For further details see  `pandas.to_sql` docs.
+        * `fail`: Raise a ValueError.
+        * `replace`: Drop the table before inserting new values.
+        * `append`: Insert new values to the existing table.
+
+    See Also
+    --------
+        `kucoincli.client.ohlcv`
     """
     client = Client()   # Instantiate an instance of the client
 
@@ -77,9 +95,12 @@ def pipeline(
         "8hour": 480, "12hour": 720, "1day": 1440, "1week": 10_080
     }
     
-    # Parse string dates
-    if isinstance(begin, str):
-        begin = _parse_date(begin)
+    # Convert string to iterable
+    if isinstance(tickers, str):
+        tickers = [tickers]
+    # Parse string to datetime object
+    if isinstance(start, str):
+        start = _parse_date(start)
     if end:
         if isinstance(end, str):
             end = _parse_date(end)
@@ -90,13 +111,13 @@ def pipeline(
             raise ValueError("Interval must be greater than 0")
     if interval not in increment_dict:
         raise KeyError("Param 'interval' incorrectly specified")
-    if not loop_range and not to_date:
-        raise ValueError("Must specify either loop_range or to_date")
-    if to_date >= from_date:
-        raise ValueError("'to_date' occurs prior to 'from_date'")
+    if not loop_range and not end:
+        raise ValueError("Must specify either loop_range or end")
+    if end <= start:
+        raise ValueError("'end' occurs prior to 'start'")
     
     # Convert timedelta to appropriate increments for use in pagination
-    td = timedelta.Timedelta(from_date - to_date).total.minutes
+    td = timedelta.Timedelta(end - start).total.minutes
     # Divide total minutes by minutes in specified increment
     scalar = increment_dict[interval]  
     loop_range = math.ceil((td / scalar) / loop_increment)
@@ -112,53 +133,59 @@ def pipeline(
                 max=loop_range, 
                 suffix='%(percent)d%% Elapsed Time: %(elapsed)ds'
             )
-        # Start-stop intervals scaled by frequency
-        period_start = 0 
-        period_stop = loop_increment
-        for i in range(loop_range):                
-            now = from_date - dt.timedelta(minutes=(period_start * increment_dict[interval]))
-            begin = from_date - dt.timedelta(minutes=(period_stop * increment_dict[interval]))
-            df = client.get_kline_history(
-                ticker, begin, now, interval, msg=msg
-            )
-            if df.empty: # If the server gives us no data, break to avoid error
-                break
-            else:
-                # If the server does give us data parse and add to db ... 
-                df["asset"] = ticker.lower() # Construct asset name column
-                # Generate SQL friendly name (i.e., adjust BTC-USDT -> btcusdt)
-                table_name = ticker.replace("-", "").lower() 
-                # Bump period start/stop increments by loop_increment
-                if i == len(range(loop_range)) - 2:
-                    # For final API call we only increase the period_stop by
-                    # the remainder amount i.e., last_loop_increment. 
-                    # This is so we only pull data between the from and to
-                    # dates specified.
-                    period_start = period_start + loop_increment
-                    period_stop = period_stop + last_loop_increment
-                else:
-                    period_start = period_start + loop_increment
-                    period_stop = period_stop + loop_increment
-                # Write OHLCV data to our SQL database
-                df.to_sql(
-                    table_name,         # Table in schema
-                    engine,             # SQLAlchemy engine
-                    schema=schema,      # Schema to write data to
-                    if_exists=if_exists,
-                    index=True,
-                    chunksize=chunk_size,
-                    dtype={
-                        "asset": Text,
-                        "time": DateTime,
-                        "open": Float,
-                        "close": Float,
-                        "high": Float,
-                        "low": Float,
-                        "volume": Float,
-                        "turnover": Float,
-                    },
+        try:
+            # Start-stop intervals scaled by frequency
+            period_start = 0 
+            period_stop = loop_increment
+            for i in range(loop_range):                
+                now = end - dt.timedelta(minutes=(period_stop * increment_dict[interval]))
+                begin = end - dt.timedelta(minutes=(period_start * increment_dict[interval]))
+                df = client.ohlcv(
+                    ticker, begin=now, end=begin, interval=interval
                 )
-                if progress_bar: 
-                    bar.next()  # Moves progress bar along
+                if df.empty: # If the server gives us no data, break to avoid error
+                    logging.info("Query returned empty response. Either incorrect asset or no more historic data.")
+                    break
+                else:
+                    # If the server does give us data parse and add to db ... 
+                    # Generate SQL friendly name (i.e., adjust BTC-USDT -> btcusdt)
+                    table_name = ticker.replace("-", "").lower() 
+                    # Bump period start/stop increments by loop_increment
+                    if i == len(range(loop_range)) - 2:
+                        # For final API call we only increase the period_stop by
+                        # the remainder amount i.e., last_loop_increment. 
+                        # This is so we only pull data between the from and to
+                        # dates specified.
+                        period_start = period_start + loop_increment
+                        period_stop = period_stop + last_loop_increment
+                    else:
+                        period_start = period_start + loop_increment
+                        period_stop = period_stop + loop_increment
+                    # Write OHLCV data to our SQL database
+                    df.to_sql(
+                        table_name,         # Table in schema
+                        engine,             # SQLAlchemy engine
+                        schema=schema,      # Schema to write data to
+                        if_exists=if_exists,
+                        index=True,
+                        chunksize=chunk_size,
+                        dtype={
+                            "time": DateTime,
+                            "open": Float,
+                            "close": Float,
+                            "high": Float,
+                            "low": Float,
+                            "volume": Float,
+                            "turnover": Float,
+                        },
+                    )
+                    if progress_bar: 
+                        bar.next()  # Moves progress bar along
+        except psycopg2.OperationalError:
+            logging.error("FATAL ERROR: the database is in recovery mode")
+            logging.info("Attempt to connect in 30 seconds . . .")
+            time.sleep(30)
         if progress_bar:
             bar.finish()
+
+    logging.info("Query complete. Closing pipeline.")
