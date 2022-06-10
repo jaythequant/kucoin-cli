@@ -7,7 +7,6 @@ import datetime as dt
 from kucoincli.client import Client
 from kucoincli.utils._helpers import _parse_date
 import logging
-import psycopg2
 import time
 
 ###############################################################################################################
@@ -181,9 +180,9 @@ def pipeline(
                     )
                     if progress_bar: 
                         bar.next()  # Moves progress bar along
-        except psycopg2.OperationalError:
+        except sqlalchemy.exc.OperationalError:
             logging.error("FATAL ERROR: the database is in recovery mode")
-            logging.info("Attempt to connect in 30 seconds . . .")
+            logging.info("Attempting to connect in 30 seconds . . .")
             time.sleep(30)
         if progress_bar:
             bar.finish()
