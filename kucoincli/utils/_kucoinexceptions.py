@@ -4,7 +4,7 @@ class Error(Exception):
     """Base class for other exceptions"""
     pass
 
-class ResponseError(Error):
+class KucoinResponseError(Error):
     """Raise when kucoin API returns empty data field"""
     pass
 

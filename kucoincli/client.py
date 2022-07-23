@@ -7,10 +7,9 @@ import calendar
 import datetime as dt
 import warnings
 import logging
-
 from kucoincli.utils._helpers import _parse_date
 from kucoincli.utils._helpers import _parse_interval
-from kucoincli.utils._kucoinexceptions import ResponseError
+from kucoincli.utils._kucoinexceptions import KucoinResponseError
 
 
 class Client(object):
@@ -72,6 +71,18 @@ class Client(object):
         else:
             self.API_URL = self.REST_API_URL
 
+        self.session = self._session()
+
+    def _session(self):
+        session = requests.Session()
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "kucoin-cli",
+            "Content-Type": "application/json",
+        }
+        session.headers.update(headers)
+        return session
+
     def _compact_json_dict(self, data:dict):
         """Convert dict to compact json"""
         return json.dumps(data, separators=(",", ":"), ensure_ascii=False)
@@ -92,7 +103,7 @@ class Client(object):
 
         if signed:
             headers = self._generate_signature(method, full_path, data)
-            return uri, headers
+            self.session.headers.update(headers)
 
         return uri
 
@@ -141,11 +152,11 @@ class Client(object):
     def subusers(self) -> pd.DataFrame:
         """Obtain a list of sub-users"""
         path = "sub/user"
-        url, headers = self._request("get", path, signed=True)
-        response = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        response = self.session.request("get", url)
         df = pd.DataFrame(response.json()["data"])
         if df.empty:
-            raise ResponseError("No sub-users found")
+            raise KucoinResponseError("No sub-users found")
         return df
 
     def get_accounts(
@@ -170,11 +181,14 @@ class Client(object):
             Returns pandas dataframe with account details.
         """
         path = "accounts"
-        url, headers = self._request("get", path, signed=True)
-        resp = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
         if resp.status_code == 401:
-            raise Exception(f"[{resp.status_code}] Invalid API credentials")
-        df = pd.DataFrame(resp.json()["data"])
+            raise KucoinResponseError(f"[{resp.status_code}] Invalid API credentials")
+        try:
+            df = pd.DataFrame(resp.json()["data"])
+        except:
+            raise Exception(resp.json()) # Handle no data keyerror
         if type: 
             df = df[df["type"] == type]
         if currency:
@@ -188,8 +202,8 @@ class Client(object):
     def get_account(self, account_id:str) -> pd.Series:
         """Obtain account details for an account specified by ID number"""
         path = f"accounts/{account_id}"
-        url, headers = self._request("get", path, signed=True)
-        response = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        response = self.session.request("get", url)
         return pd.Series(response.json()["data"])
 
     def create_account(self, type:str, currency:str) -> dict:
@@ -209,19 +223,19 @@ class Client(object):
         """
         data = {"type": type, "currency": currency}
         path = "accounts"
-        url, headers = self._request("post", path, signed=True, data=data)
+        url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def get_subaccounts(self) -> dict:
         """Returns account details for all sub-accounts. Requires Trade authorization"""
         path = f"sub-accounts"
-        url, headers = self._request("get", path, signed=True)
-        response = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        response = self.session.request("get", url)
         resp = response.json()["data"]
         if not resp:
-            raise ResponseError("No sub-accounts found")
+            raise KucoinResponseError("No sub-accounts found")
         return resp
 
     def recent_orders(self, page:int=1, pagesize:int=50) -> pd.DataFrame:
@@ -249,11 +263,11 @@ class Client(object):
             Returns pandas DataFrame with complete list of trade details.
         """
         path = f"limit/orders?currentPage={page}&pageSize={pagesize}"
-        url, headers = self._request("get", path, signed=True)
-        resp = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         if not resp:
-            raise ResponseError("No orders in the last 24 hours.")
+            raise KucoinResponseError("No orders in the last 24 hours.")
         return pd.DataFrame(resp)
 
     def transfer_funds(
@@ -292,11 +306,11 @@ class Client(object):
             data["clientOid"] = oid
         else:
             data["clientOid"] = str(int(time.time() * 10000))
-        url, headers = self._request(
+        url = self._request(
             "post", path, signed=True, api_version=self.API_VERSION2, data=data
         )
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def repay_all(self, currency:str, size:float, priority:str="highest") -> dict:
@@ -329,11 +343,11 @@ class Client(object):
             data["sequence"] = "RECENTLY_EXPIRE_FIRST"
         if size: 
             data["size"] = size
-        url, headers = self._request(
+        url = self._request(
             "post", path, signed=True, data=data
         )
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def margin_balance(self, currency:str=None) -> dict:
@@ -353,8 +367,8 @@ class Client(object):
         path = "margin/borrow/outstanding"
         if currency:
             path = f"{path}?={currency}"
-        url, headers = self._request("get", path, signed=True)
-        resp = requests.request("get", url, headers=headers)
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
         return resp.json()["data"]
 
     def ohlcv(
@@ -404,7 +418,8 @@ class Client(object):
             end = dt.datetime.utcnow()
 
         if isinstance(tickers, str):    
-            tickers = [tickers]    
+            tickers = [tickers]
+        tickers = [ticker.upper() for ticker in tickers]
 
         paganated_ranges = _parse_interval(begin, end, interval)
         unix_ranges = []    # This list will hold paganated unix epochs
@@ -435,7 +450,7 @@ class Client(object):
 
             for path in paths:
                 url = self._request("get", path)
-                resp = requests.request("get", url)
+                resp = self.session.request("get", url)
 
                 # Handle timeout response by sleeping function
                 if resp.status_code == 200:
@@ -444,17 +459,17 @@ class Client(object):
                     logging.debug("Server requires 10 second timeout")
                     time.sleep(11)
                     logging.debug("Re-establishing stream . . . ")
-                    resp = requests.request("get", url)
+                    resp = self.session.request("get", url)
                     if resp.status_code == 429:
                         logging.debug("Server requires hard timeout: 3 minute delay.")
                         time.sleep(180)
                         logging.debug("Re-establishing stream . . . ")
-                        resp = requests.request("get", url)
+                        resp = self.session.request("get", url)
                         if resp.status_code == 429:
                             logging.debug("Server requires hard timeout: 5 minute delay.")
                             time.sleep(300)
                             logging.debug("Re-establishing stream . . . ")
-                            resp = requests.request("get", url)
+                            resp = self.session.request("get", url)
                         else:
                             pass
                 else:
@@ -503,7 +518,7 @@ class Client(object):
         """
         path = f"market/histories?symbol={symbol.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.json())
         resp = resp.json()
@@ -548,7 +563,7 @@ class Client(object):
         """
         path = "symbols"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.status_code)
         resp = resp.json()
@@ -557,7 +572,7 @@ class Client(object):
             try:
                 df = df.loc[pair, :]
             except KeyError as e: 
-                raise KeyError("Keys not found in list frame", e)
+                raise KeyError("Keys not found in response data", e)
         return df
 
     def get_margin_data(self, currency:str) -> pd.DataFrame:
@@ -579,13 +594,13 @@ class Client(object):
         """
         path = f"margin/trade/last?currency={currency.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp)
         resp = resp.json()["data"]
         df = pd.DataFrame(resp)
         if df.empty:
-            raise ResponseError("No data returned.")
+            raise KucoinResponseError("No data returned.")
         df["timestamp"] = pd.to_datetime(df["timestamp"], origin="unix")
         df.set_index("timestamp", inplace=True)
         return df
@@ -611,12 +626,12 @@ class Client(object):
         if term:
             path = path + f"&term={term}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.status_code)
         resp = resp.json()["data"]
         if df.empty:
-            ResponseError("No results for currency and term combination")
+            KucoinResponseError("No results for currency and term combination")
         df = pd.DataFrame(resp)
         return df
 
@@ -624,7 +639,7 @@ class Client(object):
         """Obtain marginable securities with trade details"""
         path = "symbols"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.status_code)
         resp = resp.json()
@@ -649,7 +664,7 @@ class Client(object):
         """
         path = f"market/histories?symbol={pair.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.status_code)
         resp = resp.json()
@@ -668,7 +683,7 @@ class Client(object):
         """
         path = "markets"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         return resp.json()["data"]
 
     def get_stats(self, pair:str) -> pd.Series:
@@ -686,7 +701,7 @@ class Client(object):
         """
         path = f"market/stats?symbol={pair.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         return pd.Series(resp)
 
@@ -694,13 +709,13 @@ class Client(object):
         """Obtain best bid-ask spread details for a specified pair"""
         path = f"market/orderbook/level1?symbol={pair.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         if resp is None:
-            raise ResponseError("No data returned for pair.")
+            raise KucoinResponseError("No data returned for pair.")
         return pd.Series(resp)
 
-    def all_tickers(self, round:int=7) -> pd.DataFrame:
+    def all_tickers(self) -> pd.DataFrame:
         """Query entire market for 24h trading statistics
         
         Parameters
@@ -716,20 +731,17 @@ class Client(object):
         """
         path = "market/allTickers"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         df = pd.DataFrame(resp["ticker"]).drop("symbolName", axis=1)
         df.set_index("symbol", inplace=True)
-        df = df.astype(float)
-        if round:
-            df = df.round(round)
         return df
 
     def get_currencies(self) -> pd.DataFrame:
         """Query API list of general currency info including precision and marginability"""
         path = "currencies"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         df = pd.DataFrame(resp)
         df.set_index("currency", inplace=True)
@@ -750,7 +762,7 @@ class Client(object):
         """
         path = f"currencies/{currency.upper()}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         return pd.Series(resp)
 
@@ -771,7 +783,7 @@ class Client(object):
         # Chains column return is a dictionary which is not good.
         path = f"currencies/{currency.upper()}"
         url = self._request("get", path, api_version=self.API_VERSION2)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         df = pd.DataFrame(resp)
         return df
@@ -803,7 +815,7 @@ class Client(object):
         else: 
             path = f"prices?base={fiat}"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         resp = resp.json()["data"]
         return pd.Series(resp, name=f"{fiat} Denominated")
 
@@ -820,14 +832,14 @@ class Client(object):
         try:
             df = df[df["isMarginEnabled"] == True]
         except KeyError:
-            raise ResponseError("No message data received.")
+            raise KucoinResponseError("No message data received.")
         return df
 
     def margin_config(self) -> dict:
         """Pull margin configuration as JSON dictionary"""
         path = "margin/config"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         return resp.json()["data"]
 
     def get_socket_detail(self, private=False):
@@ -836,12 +848,12 @@ class Client(object):
             path = "bullet-public"
             is_signed = False
             url = self._request("post", path, signed=is_signed)
-            resp = requests.request("post", url)
+            resp = self.session.request("post", url)
         if private:
             path = "bullet-private"
             is_signed = True
-            url, headers = self._request("post", path, signed=is_signed)
-            resp = requests.request("post", url, headers=headers)
+            url = self._request("post", path, signed=is_signed)
+            resp = self.session.request("post", url)
         if resp.status_code != 200:
             logging.error(resp.status_code)
         return resp.json()["data"]
@@ -869,7 +881,7 @@ class Client(object):
         """
         path = "timestamp"
         url = self._request("get", path)
-        resp = requests.request("get", url)
+        resp = self.session.request("get", url)
         if resp.status_code != 200:
             return logging.error(resp.status_code)
         resp = resp.json()["data"]
@@ -965,9 +977,9 @@ class Client(object):
             data["iceberg"] = iceberg
             data["visible_size"] = visible_size
         path = "orders"
-        url, headers = self._request("post", path, signed=True, data=data)
+        url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def market_order(
@@ -1025,9 +1037,9 @@ class Client(object):
         if stp:
             data["stp"] = stp
         path = "orders"
-        url, headers = self._request("post", path, signed=True, data=data)
+        url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def margin_market_order(
@@ -1111,9 +1123,9 @@ class Client(object):
         if mode != "cross":
             data["marginMode"] = mode
         path = "margin/order"
-        url, headers = self._request("post", path, signed=True, data=data)
+        url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = requests.request("post", url, data=data_json)
         return resp.json()
 
 
@@ -1223,7 +1235,7 @@ class Client(object):
             data["iceberg"] = iceberg
             data["visible_size"] = visible_size
         path = "margin/order"
-        url, headers = self._request("post", path, signed=True, data=data)
+        url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, headers=headers, data=data_json)
+        resp = self.session.request("post", url, data=data_json)
         return resp.json()

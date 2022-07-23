@@ -1,5 +1,5 @@
 """
-##### A very simply data pipeline setup using `kucoincli.pipe` module #####
+##### A simple data pipeline using `kucoincli.pipe` module #####
 
 Database created will look like this ...... 
 
@@ -19,10 +19,8 @@ from sqlalchemy import create_engine
 import logging
 
 # Create our sqlite database engine with sqlalchemy.
-# This engine will generate a new database for us if 
-# none exists prior.
-# Be aware that it is highly recommended to use a true
-# SQL database such as Postgre.
+# The engine will generate a new database or append
+# to a pre-existing one.
 engine = create_engine("sqlite:///example.db")
 
 # Add a logger to see pick up some additional output info
@@ -31,17 +29,15 @@ fmt = "%(asctime)s [%(levelname)s] %(module)s :: %(message)s"
 logging.basicConfig(level=logging.INFO, format=fmt)
 logging.getLogger(__name__)
 
-# Setup our constants for the pipeline.
-# There are many more adjustments we can
-# make to the pipe, but we want to keep this 
-# example as simple as possible.
-TICKER = "BT-USDT" # Note we could specify multiple tickers as a list
-START = "2022-04-01" # Note we could specify this as a datetime object
+# Setup constants for the pipeline.
+# `pipeline`s are highly configurable 
+# Read the docs for more information
+TICKER = "BTC-USDT"
+START = "2022-04-01"
 END = "2022-05-01"
 INTERVAL = "1min"
 
-# Now let's ppen up our pipeline ...
-# Note that we are not specifying a schema as SQLite will not allow it
+# Now let's open up our pipeline ...
 pipeline(
     tickers=TICKER,     # Tickers to query OHLCV data for
     engine=engine,      # Engine to run our database
@@ -52,9 +48,9 @@ pipeline(
 
 # Viola, we have generated a database. 
 
-# This pipeline will obtain 30 days of minutely data and store it in
-# an SQLite .db file in our examples folder. It will conviently
-# demonstrate its progress with a progress bar and let the user know 
+# This current pipeline will obtain 30 days of minutely data for our `TICKER` const
+# and store it in an SQLite .db file in our examples folder. 
+# Default it will track its progress with a progress bar and let the user know 
 # when it has finished retrieving and filing the data.
 
 ## Thats the entire pipeline! As easy as that we have created a permanent ##

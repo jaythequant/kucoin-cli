@@ -5,7 +5,6 @@ from ..client import Client
 
 
 class Subscriptions(Client):
-
     """
     Construct socket subscriptions for Kucoin websockets
     This class is temporary and will be refined in future builds of the 
