@@ -4,3 +4,5 @@ __pycache__
 dist/
 *.egg-info
 *log
+.vscode
+.DS_Store

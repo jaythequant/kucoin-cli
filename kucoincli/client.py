@@ -7,6 +7,7 @@ import calendar
 import datetime as dt
 import warnings
 import logging
+import functools
 from kucoincli.utils._helpers import _parse_date
 from kucoincli.utils._helpers import _parse_interval
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
@@ -81,6 +82,8 @@ class Client(object):
             "Content-Type": "application/json",
         }
         session.headers.update(headers)
+        # Shim to add default timeout value to get/post requests
+        session.request = functools.partial(session.request, timeout=10)
         return session
 
     def _compact_json_dict(self, data:dict):
@@ -372,8 +375,9 @@ class Client(object):
         return resp.json()["data"]
 
     def ohlcv(
-        self, tickers:str or list, begin:dt.datetime or str, end:dt.datetime or str=None, 
-        interval:str="1day", warning:bool=True,
+        self, tickers:str or list, begin:dt.datetime or str, 
+        end:None or dt.datetime or str=None, interval:str="1day", 
+        warning:bool=True, sort_ascending=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -450,31 +454,37 @@ class Client(object):
 
             for path in paths:
                 url = self._request("get", path)
-                resp = self.session.request("get", url)
-
-                # Handle timeout response by sleeping function
-                if resp.status_code == 200:
-                    pass
-                elif resp.status_code == 429:
-                    logging.debug("Server requires 10 second timeout")
-                    time.sleep(11)
-                    logging.debug("Re-establishing stream . . . ")
+                try:
                     resp = self.session.request("get", url)
-                    if resp.status_code == 429:
-                        logging.debug("Server requires hard timeout: 3 minute delay.")
-                        time.sleep(180)
+                    # Handle timeout response by sleeping function
+                    if resp.status_code == 200:
+                        pass
+                    elif resp.status_code == 429:
+                        logging.debug("Server requires 10 second timeout")
+                        time.sleep(11)
                         logging.debug("Re-establishing stream . . . ")
                         resp = self.session.request("get", url)
                         if resp.status_code == 429:
-                            logging.debug("Server requires hard timeout: 5 minute delay.")
-                            time.sleep(300)
+                            logging.debug("Server requires hard timeout: 3 minute delay.")
+                            time.sleep(180)
                             logging.debug("Re-establishing stream . . . ")
                             resp = self.session.request("get", url)
-                        else:
-                            pass
-                else:
-                    logging.error(f"Failed reponse. Returned code: {resp.status_code}")
-                
+                    else:
+                        logging.error(f"Failed reponse. Returned code: {resp.status_code}")
+                except requests.exceptions.ConnectionError as e:
+                    logging.info("ConnectionError raised. 10 minute timeout.")
+                    logging.debug(e, exc_info=True)
+                    self.session.close()
+                    time.sleep(600) # Ten minute time out
+                    self.session = self._session()
+                    resp = self.session.request("get", url)
+                except requests.exceptions.ReadTimeout as e:
+                    logging.info("Request.exceptions.ReadTimeout. 5 minute timeout")
+                    logging.debug(e, exc_info=True)
+                    self.session.close()
+                    time.sleep(300) # Ten minute time out
+                    self.session = self._session()
+                    resp = self.session.request("get", url)
                 resp = resp.json()
                 try:
                     df = pd.DataFrame(resp["data"])

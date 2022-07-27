@@ -125,7 +125,6 @@ def pipeline(
     logging.info("Initializing data acquisition . . .")
 
     for ticker in tickers:
-        # Setup progress bar if progress_bar = True
         if progress_bar:
             bar = Bar(
                 f"Processing {ticker} ...", 
@@ -140,10 +139,10 @@ def pipeline(
                 now = end - dt.timedelta(minutes=(period_stop * increment_dict[interval]))
                 begin = end - dt.timedelta(minutes=(period_start * increment_dict[interval]))
                 df = client.ohlcv(
-                    ticker, begin=now, end=begin, interval=interval
+                    ticker, begin=now, end=begin, interval=interval,
                 )
                 if df.empty: # If the server gives us no data, break to avoid error
-                    logging.info("Query returned empty response. Either incorrect asset or no more historic data.")
+                    logging.debug("Historic data does not reach end date. Moving to next asset.")
                     break
                 else:
                     # If the server does give us data parse and add to db ... 
