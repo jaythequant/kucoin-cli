@@ -162,9 +162,9 @@ class Client(object):
             raise KucoinResponseError("No sub-users found")
         return df
 
-    def get_accounts(
-        self, type:str=None, currency:str=None, balance:float=None
-    ) -> pd.DataFrame:
+    def accounts(
+        self, type:str=None, currency:str=None, balance:float=None, id:str=None,
+    ) -> pd.DataFrame or pd.Series:
         """Query API for open accounts filterd by type, currency or balance.
 
         Parameters
@@ -177,6 +177,8 @@ class Client(object):
             Defaults to None which returns all currencies.
         balance : float 
             Specify float value to restrict returns to only accounts with => values.
+        id : str
+            Specify ID# to query an explicit accounts.
 
         Returns
         -------
@@ -184,30 +186,31 @@ class Client(object):
             Returns pandas dataframe with account details.
         """
         path = "accounts"
+        if id:
+            path = path + f"/{id}"
         url = self._request("get", path, signed=True)
         resp = self.session.request("get", url)
         if resp.status_code == 401:
             raise KucoinResponseError(f"[{resp.status_code}] Invalid API credentials")
         try:
-            df = pd.DataFrame(resp.json()["data"])
+            if id:
+                df = pd.Series(resp.json()["data"])
+            else:
+                df = pd.DataFrame(resp.json()["data"])
         except:
             raise Exception(resp.json()) # Handle no data keyerror
+        df[["balance", "available", "holds"]] = df[["balance", "available", "holds"]].astype(float)
         if type: 
             df = df[df["type"] == type]
         if currency:
             df = df[df["currency"] == currency]
         if balance:
-            df = df[df["balance"].astype(float) >= balance]
+            df = df[df["balance"] >= balance]
         if df.empty:
-           raise Exception("No accounts found / no data returned.")
-        return df.set_index("id")
-
-    def get_account(self, account_id:str) -> pd.Series:
-        """Obtain account details for an account specified by ID number"""
-        path = f"accounts/{account_id}"
-        url = self._request("get", path, signed=True)
-        response = self.session.request("get", url)
-        return pd.Series(response.json()["data"])
+           raise KucoinResponseError("No accounts found / no data returned.")
+        if not id:
+            df.set_index("id")
+        return df
 
     def create_account(self, type:str, currency:str) -> dict:
         """Create a new sub-account of account type `type` for currency `currency`.
@@ -377,7 +380,7 @@ class Client(object):
     def ohlcv(
         self, tickers:str or list, begin:dt.datetime or str, 
         end:None or dt.datetime or str=None, interval:str="1day", 
-        warning:bool=True, sort_ascending=True,
+        warning:bool=True, ascending=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -387,14 +390,14 @@ class Client(object):
 
         Parameters
         ----------
-        tickers : str or list 
+        tickers : str or list
             Currency pair or list of pairs. Pair names must be formatted in upper 
             case (e.g. ETH-BTC)
         begin : str or datetime.datetime
-            Start time for queried date range. May be given either as a datetime object
+            Earliest time for queried date range. May be given either as a datetime object
             or string. String format may include hours/minutes/seconds or may not
             String format examples: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
-        end : str or datetime.datetime
+        end : None or str or datetime.datetime, optional
             (Optional) Ending date for queried date range. This parameter has the same
             formatting rules and flexibility of param `begin`. If left unspecified, end 
             will default to the current UTC date and time stamp.
@@ -509,9 +512,9 @@ class Client(object):
             else:
                 dfs.append(df_pages[0])
         if len(dfs) > 1:
-            return pd.concat(dfs, axis=1, keys=tickers)
+            return pd.concat(dfs, axis=1, keys=tickers).sort_index(ascending=ascending)
         else:
-            return dfs[0]
+            return dfs[0].sort_index(ascending=ascending)
 
     def get_order_history(self, symbol:str) -> pd.DataFrame:
         """Query API the 100 most recent filled trades for a specified symbol
@@ -624,7 +627,7 @@ class Client(object):
 
         Parameters
         ----------
-        currency : str 
+        currency : str
             Target currency to pull lending rates on (e.g., BTC)
         
         Returns
@@ -695,6 +698,47 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         return resp.json()["data"]
+
+    def margin_account(
+        self, asset:None or str or list=None, balance:None or float=None,
+    ) -> pd.DataFrame or pd.Series:
+        """Return cross margin account details
+
+        Parameters
+        ----------
+        asset : None or str or list, optional
+            Specify a currency or list of currencies and return only 
+            margin account balance information for those assets.
+        balance : None or float, optional
+            Control minimum balance required to include asset in return
+            values.
+        
+        Returns
+        -------
+        pd.DataFrame or pd.Series
+            Returns a DataFrame containing margin account balance
+            details for all available marginable assets
+        """
+        path = "margin/account"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        df = pd.DataFrame(resp.json()["data"]["accounts"]).set_index("currency")
+        df = df.astype(float)
+        if asset:
+            if isinstance(asset, str):
+                asset = [asset]
+            asset = [a.upper() for a in asset]
+            try:
+                df = df.loc[asset]
+            except KeyError:
+                raise KeyError("Asset not found in marginable index")
+        if balance is not None:
+            df = df[df["totalBalance"] > 0]
+            if df.empty:
+                raise KeyError(
+                f"No accounts with balance greater than {balance}"
+            )
+        return df.squeeze()
 
     def get_stats(self, pair:str) -> pd.Series:
         """Query API for OHLC(V) figures and assorted statistics on specified pair
