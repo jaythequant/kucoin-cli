@@ -1,30 +1,17 @@
 import time
 import json
 
-from ..client import Client
-
-
-class Subscriptions(Client):
+class Subscriptions(object):
     """
     Construct socket subscriptions for Kucoin websockets
     This class is temporary and will be refined in future builds of the 
     websocket functionaility. 
     """
 
-    def __init__(self, api_key, api_secret, api_passphrase):
-
-        super().__init__(api_key, api_secret, api_passphrase)
-
-
-    def construct_socket_path(self, private=False):
-        """Construct socketpath from socket detail HTTP request"""
-        socket_detail = self.get_socket_detail(private=private)
-        token = socket_detail["token"]
-        endpoint = socket_detail["instanceServers"][0]["endpoint"]
-        nonce = int(round(time.time(), 3) * 10_000)
-        socket_path = endpoint + f"?token={token}" + f"&[connectId={nonce}]"
-        return socket_path
-
+    def __init__(self, api_key=None, api_secret=None, api_passphrase=None):
+        self.API_KEY = api_key
+        self.API_SECRET = api_secret
+        self.API_PASSPHRASE = api_passphrase
 
     async def submit_subscription(self, socket, channel, private=False, ack=False):
         """Submit Kucoin websocket subscription request"""
@@ -38,7 +25,6 @@ class Subscriptions(Client):
         await socket.send(json.dumps(headers))
         resp = await socket.recv()
         return resp
-
 
     def orderbook_sub(self, symbol, level=2, depth=5):
         """Build out orderbook subscriptions for various depths and book levels"""
@@ -69,7 +55,3 @@ class Subscriptions(Client):
                 6hour, 8hour, 12hour, 1day, 1week
         """
         return f"/market/candles:{symbol}_{interval}"
-
-    def _get_timeout(self):
-        resp = self.get_socket_detail()
-        return resp

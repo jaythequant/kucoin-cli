@@ -1,19 +1,22 @@
 import time
 import requests
 import base64, hashlib, hmac
-import pandas as pd
 import json
 import calendar
-import datetime as dt
 import warnings
 import logging
 import functools
+import numpy as np
+import pandas as pd
+import datetime as dt
+from collections import namedtuple
 from kucoincli.utils._helpers import _parse_date
 from kucoincli.utils._helpers import _parse_interval
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
+from kucoincli.sockets.subscribe import Subscriptions
 
 
-class Client(object):
+class Client(Subscriptions):
 
     """KuCoin REST API wrapper -> https://docs.kucoin.com/#general
 
@@ -60,6 +63,8 @@ class Client(object):
     ORDER_MARKET_STOP = "market_stop"
 
     def __init__(self, api_key="", api_secret="", api_passphrase="", sandbox=False, requests_params=None):
+
+        super(Subscriptions).__init__()
 
         self.logger = logging.getLogger(__name__)
 
@@ -212,15 +217,15 @@ class Client(object):
             df.set_index("id")
         return df
 
-    def create_account(self, type:str, currency:str) -> dict:
+    def create_account(self, currency:str, type:str) -> dict:
         """Create a new sub-account of account type `type` for currency `currency`.
 
         Parameters
         ----------
-        type: str 
-            Type of account to create. Options: main, trade, margin.
         currency : str 
             Currency account type to create (e.g., BTC).
+        type: str 
+            Type of account to create. Options: main, trade, margin.
 
         Returns
         -------
@@ -234,9 +239,11 @@ class Client(object):
         resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
-    def get_subaccounts(self) -> dict:
+    def get_subaccounts(self, id:str or None=None) -> dict:
         """Returns account details for all sub-accounts. Requires Trade authorization"""
         path = f"sub-accounts"
+        if id:
+            path = f"path/{id}"
         url = self._request("get", path, signed=True)
         response = self.session.request("get", url)
         resp = response.json()["data"]
@@ -244,7 +251,7 @@ class Client(object):
             raise KucoinResponseError("No sub-accounts found")
         return resp
 
-    def recent_orders(self, page:int=1, pagesize:int=50) -> pd.DataFrame:
+    def recent_orders(self, page:int=1, pagesize:int=50, id:str=None) -> pd.DataFrame:
         """Returns pandas Series with last 24 hours of trades detailed.
 
         Notes
@@ -262,21 +269,28 @@ class Client(object):
         pagesize : int 
             (Optional) Max number of trades to display per response
             Default `pagesize` is 50.
+        id : str, optional
+            Specify an explicit order ID to return values for only that order
         
         Returns
         -------
-        DataFrame
-            Returns pandas DataFrame with complete list of trade details.
+        DataFrame or Series
+            Returns pandas DataFrame with complete list of trade details or if a single
+            order ID was specified return a pandas Series with only that trade's details
         """
         path = f"limit/orders?currentPage={page}&pageSize={pagesize}"
+        if id:
+            path = f"orders/{id}"
         url = self._request("get", path, signed=True)
         resp = self.session.request("get", url)
         resp = resp.json()["data"]
         if not resp:
-            raise KucoinResponseError("No orders in the last 24 hours.")
+            raise KucoinResponseError("No orders in the last 24 hours or order ID not found.")
+        if id:
+            return pd.Series(resp)
         return pd.DataFrame(resp)
 
-    def transfer_funds(
+    def transfer(
         self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None
     ) -> dict:
         """Function for transferring funds between margin, trade and main accounts.
@@ -473,7 +487,7 @@ class Client(object):
                             logging.debug("Re-establishing stream . . . ")
                             resp = self.session.request("get", url)
                     else:
-                        logging.error(f"Failed reponse. Returned code: {resp.status_code}")
+                       raise KucoinResponseError(f"Error response: <{resp.status_code}>")
                 except requests.exceptions.ConnectionError as e:
                     logging.info("ConnectionError raised. 10 minute timeout.")
                     logging.debug(e, exc_info=True)
@@ -516,34 +530,7 @@ class Client(object):
         else:
             return dfs[0].sort_index(ascending=ascending)
 
-    def get_order_history(self, symbol:str) -> pd.DataFrame:
-        """Query API the 100 most recent filled trades for a specified symbol
-        
-        Parameters
-        ----------
-        symbol : str 
-            Symbol to query order history for (e.g., BTC-USDT)
-
-        Returns
-        -------
-        DataFrame
-            Returns pandas DataFrame with order history details
-        """
-        path = f"market/histories?symbol={symbol.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            return logging.error(resp.json())
-        resp = resp.json()
-        try:
-            df = pd.DataFrame(resp["data"])
-        except KeyError:
-            return logging.error("No message data received.")
-        df["time"] = pd.to_datetime(df["time"], origin="unix")
-        df.set_index("time", inplace=True)
-        return df
-
-    def symbols(self, pair:str or list=None) -> pd.DataFrame or pd.Series:
+    def symbols(self, pair:str or list=None, market:str or None=None) -> pd.DataFrame or pd.Series:
         """Query API for dataframe containing detailed list of trading pairs
 
         This is the primary trading pair detail endpoint for users. The returned values
@@ -578,7 +565,7 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp.status_code)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
@@ -609,7 +596,7 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()["data"]
         df = pd.DataFrame(resp)
         if df.empty:
@@ -641,25 +628,44 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp.status_code)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()["data"]
         if df.empty:
             KucoinResponseError("No results for currency and term combination")
         df = pd.DataFrame(resp)
         return df
 
-    def get_marginable_details(self) -> pd.DataFrame:
-        """Obtain marginable securities with trade details"""
+    def get_marginable_pairs(self, base:None or str or list=None) -> pd.DataFrame:
+        """Obtain all marginable securities with trade details
+
+        Parameters
+        ----------
+        base : None or str or list, optional
+            Filter results by base currency. Margin only supported currently 
+            for `[BTC, ETH, USDT, USDC]`
+
+        Returns
+        -------
+        pd.DataFrame
+            Return DataFrame object with marginable trading pairs and
+            relevant trade details for each pair.
+        """
+        if base:
+            if isinstance(base, str):
+                base = [base]
+            base = [ticker.upper() for ticker in base]
         path = "symbols"
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp.status_code)
+            raise KucoinResponseError(resp.status_code)
         resp = resp.json()
         df = pd.DataFrame(resp["data"])
         marginTrue = df["isMarginEnabled"] == True
         tradingEnabled = df["enableTrading"] == True
         df = df[marginTrue & tradingEnabled]
+        if base:
+            df = df[df["quoteCurrency"].isin(base)]
         return df
 
     def get_trade_history(self, pair:str) -> pd.DataFrame:
@@ -679,9 +685,12 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp.status_code)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()
-        df = pd.DataFrame(resp["data"])
+        try:
+            df = pd.DataFrame(resp["data"])
+        except KeyError:
+            return KucoinResponseError(f"No trade history received. Is {pair} a valid trading pair?")
         df["time"] = pd.to_datetime(df["time"], origin="unix")
         df.set_index("time", inplace=True)
         return df
@@ -759,7 +768,30 @@ class Client(object):
         resp = resp.json()["data"]
         return pd.Series(resp)
 
-    def get_ticker_spreads(self, pair:str) -> pd.Series:
+    def get_fee_rate(self, currency:str or list or None=None, type:str="crypto") -> dict:
+        """Get the base fee for users in either crypto or fiat terms"""
+        if not currency:
+            if type == "crypto":
+                path = "base-fee?currencyType=0"
+            if type == "fiat":
+                path = "base-fee?currencyType=1"
+        if currency:
+            if isinstance(currency, str):
+                currency = [currency]
+            if len(currency) > 10:
+                raise ValueError("This endpoint is limited to 10 currencies per call.")
+            curr_str = ",".join(currency)
+            path = f"trade-fees?symbols={curr_str}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = resp.json()["data"]
+        if not currency:
+            return {f"{type.title()} Base Rate": resp}
+        return resp
+
+    def get_level1_orderbook(self, pair:str, time="utc") -> pd.Series or pd.DataFrame:
         """Obtain best bid-ask spread details for a specified pair"""
         path = f"market/orderbook/level1?symbol={pair.upper()}"
         url = self._request("get", path)
@@ -767,7 +799,142 @@ class Client(object):
         resp = resp.json()["data"]
         if resp is None:
             raise KucoinResponseError("No data returned for pair.")
-        return pd.Series(resp)
+        ser = pd.Series(resp, name=pair)
+        if time == "utc":
+            ser.loc["time"] = pd.to_datetime(
+                dt.datetime.utcfromtimestamp(
+                    ser.loc["time"] / 1000
+                ).strftime('%Y-%m-%d %H:%M:%S')
+            )
+        if time == "unix" or not time:
+            pass
+        return ser
+
+    def orderbook(
+        self, pair:str, depth:int or str or None=100, format="df"
+    ) -> dict or pd.DataFrame or namedtuple:
+        """Query full or partial orderbook for target pair
+
+        Query KuCoin's orderbook for a specific currency with a variety of 
+        depth and format parameters. Note that orderbook historic information 
+        cannot be queried. 
+
+        Parameters
+        ----------
+        pair : str
+            Target currency whose orderbook will be obtained (e.g., "BTC-USDT")
+        depth : int or str or None, optional
+            Specify orderbook depth as integer or as `None` or `full`. Be aware 
+            that orderbook depths above 100 will require API keys with general 
+            privelege or greater. Default = 100.
+        format : str, optional
+            Dictate data structure output. `format` options include
+            * `df` and `dataframe`: Return a formatted dataframe.
+            * `raw`: Return unaltered dictionary containing full JSON response. Note 
+              that `raw` only returns exactly the best 100 bid-asks spreads or 
+              the entire orderbook. If `depth <= 100`, `format=raw` will return the 
+              100 best spreads. If `depth > 100` or `depth=None or full`, the entire
+              orderbook will be returned.
+            * `np` and `numpy`: Return a `namedtuple` with NumPy datastructures. See 
+              ``Returns`` sections for explanation of namedtuple data struct.
+
+        Returns
+        -------
+        dict or DataFrame or namedtuple
+            * `format=raw`: Return a json dictionary containing either the 100 best
+              bid-ask spreads or the full orderbook. If depth < 100, return the 100 best
+              else return the full orderbook.
+            * `format=df or dataframe`: Return a pandas DataFrame with multiIndex on
+              rows and columns. Column multiIndex shows Bid and Ask at level 0 and 
+              `price` corresponding to bid-ask price, `offer` corresponding to total
+              price currency the given price, and `value` corresponding to total base 
+              currency availabe at the given price and offer levels (value= price * offer).
+            * `format=np or numpy`: Return a namedtuple containing the following price data:
+                * `namedtuple.asset`: String value of asset to which the orderbook belongs
+                * `namedtuple.time`: Unix-epoch time value (at microsecond level)
+                * `namedtuple.bids`: [N x 2] NumPy array with bid prices in column 0, offer
+                  amounts in column 1, and sequence in column 2.
+                * `numedtuple.asks`: [N x 3] NumPy array with ask prices in column 0, offer
+                  amounts in column 1, and sequence in column 2.
+        
+        Notes
+        -----
+        Obtaining depth size greater than 100 or the full orderbook requires API keys with 
+        at least general access.
+
+        Full orderbook bid-ask depth will almost never be equivalent. This creates NaN
+        values in dataframe returns when `format=df or dataframe` and `depth=None or "full"`.
+
+        Strict controls are placed on full orderbook API queries and timeouts will be 
+        enforced if queried more than 30 times/3s. For a guide on maintaining live
+        orderbooks, see https://docs.kucoin.com/#level-2-market-data.
+
+        Raises
+        ------
+        KucoinResponseError
+            If HTTP response does not equal 200 or the reponse equals 200, but no data is
+            returned in the JSON object.
+        """
+        if isinstance(depth, str or None):
+            if depth == "full":
+                format == "numpy"
+                path = f"market/orderbook/level2?symbol={pair.upper()}"
+                url = self._request(
+                    "get", path, api_version=self.API_VERSION3, signed=True
+                )
+        if isinstance(depth, int):
+            if depth <= 100:
+                path = f"market/orderbook/level2_100?symbol={pair.upper()}"
+                url = self._request("get", path)
+            else:
+                format == "numpy"
+                path = f"market/orderbook/level2?symbol={pair.upper()}"
+                url = self._request(
+                    "get", path, api_version=self.API_VERSION3, signed=True
+                )
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = resp.json()
+        # Sometimes the request is valid, but no data is returned. If this is the case then
+        # `time` will be 0.
+        if resp["data"]["time"] == 0:
+            raise KucoinResponseError(f"Empty data returned. Is {pair} a valid trading pair?")
+        if format == "raw":
+            return resp
+        if format == "df" or format == "dataframe":
+            fmt = "%Y-%m-%d %H:%M:%S"
+            t = resp["data"]["time"]
+            t = pd.to_datetime(dt.datetime.utcfromtimestamp(t / 1000).strftime(fmt))
+            bids = np.array(resp["data"]["bids"], dtype=float)
+            asks = np.array(resp["data"]["asks"], dtype=float)
+            if isinstance(depth, int):
+                bids = pd.DataFrame(bids[:depth, :], columns=["price", "offer"])
+                asks = pd.DataFrame(asks[:depth, :], columns=["price", "offer"])
+            if isinstance(depth, str or None):
+                bids = pd.DataFrame(bids, columns=["price", "offer"])
+                asks = pd.DataFrame(asks, columns=["price", "offer"])
+            bids["value"] = bids.price.astype(float) * bids.offer.astype(float)
+            asks["value"] = asks.price.astype(float) * asks.offer.astype(float)
+            df = pd.concat([bids, asks], keys=["Bids", "Asks"], axis=1)
+            df.index = df.index + 1
+            df = pd.concat({t: df}, names=["time", "depth"]).astype(float)
+            return df
+        if format == "numpy" or format == "np":
+            orderbook = namedtuple("orderbook",("asset", "time", "bids", "asks"))
+            sequence = float(resp["data"]["sequence"])
+            orderbook.bids = np.array(resp["data"]["bids"], dtype=float)
+            orderbook.asks = np.array(resp["data"]["asks"], dtype=float)
+            bidseq = np.full((orderbook.bids.shape[0],1), sequence, dtype=float)
+            askseq = np.full((orderbook.asks.shape[0],1), sequence, dtype=float)
+            orderbook.bids = np.hstack((orderbook.bids, bidseq))
+            orderbook.asks = np.hstack((orderbook.asks, askseq))
+            orderbook.time = float(resp["data"]["time"])
+            orderbook.asset = pair
+            if isinstance(depth, int):
+                orderbook.bids = orderbook.bids[:depth, :]
+                orderbook.asks = orderbook.asks[:depth, :]
+            return orderbook
 
     def all_tickers(self) -> pd.DataFrame:
         """Query entire market for 24h trading statistics
@@ -791,36 +958,33 @@ class Client(object):
         df.set_index("symbol", inplace=True)
         return df
 
-    def get_currencies(self) -> pd.DataFrame:
-        """Query API list of general currency info including precision and marginability"""
-        path = "currencies"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
-        df = pd.DataFrame(resp)
-        df.set_index("currency", inplace=True)
-        return df
-
-    def get_currency_detail(self, currency:str) -> pd.Series:
-        """Query API for target currency including precision and marginability
+    def get_currency_detail(self, currency:str or None=None) -> pd.Series or pd.DataFrame:
+        """Query API for currency or list of currencies including precision and marginability
         
         Parameters
         ----------
-        currency : str 
+        currency : str or None, optional
             Target currency to obtain details (e.g. BTC)
 
         Returns
         -------
-        pd.Series
-            Return pandas Series with target currency detail
+        pd.Series or DataFrame
+            Return pandas Series or DataFrame with currency detail
         """
-        path = f"currencies/{currency.upper()}"
+        if not currency:
+            path = "currencies"
+        else:
+            path = f"currencies/{currency.upper()}"
         url = self._request("get", path)
         resp = self.session.request("get", url)
         resp = resp.json()["data"]
-        return pd.Series(resp)
+        if isinstance(currency, str):
+            return pd.Series(resp)
+        else:
+            return pd.DataFrame(resp).set_index("currency")
 
-    def get_full_detail(self, currency):
+
+    def get_full_currency_detail(self, currency):
         """Currently not fully implemented
 
         Parameters
@@ -896,7 +1060,7 @@ class Client(object):
         resp = self.session.request("get", url)
         return resp.json()["data"]
 
-    def get_socket_detail(self, private=False):
+    def get_socket_detail(self, private:bool=False) -> dict:
         """Get socket details for private or public endpoints"""
         if not private:
             path = "bullet-public"
@@ -909,24 +1073,25 @@ class Client(object):
             url = self._request("post", path, signed=is_signed)
             resp = self.session.request("post", url)
         if resp.status_code != 200:
-            logging.error(resp.status_code)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         return resp.json()["data"]
 
-    def get_server_time(self, datetime_output:bool=False) -> int:
+    def get_server_time(self, format:str="utc") -> int:
         """Return server time in UTC time to millisecond granularity
 
         Notes
         -----
-            This function will return the KuCoin official server time in UTC as unix epoch.
-            Returned time is an integer value representing time to millisecond precision. 
-            This function should be used to sync client and server time as orders submitted 
-            with a timestamp over 5 seconds old will be rejected by the server. In some cases,
-            client time can lag server time resulting in the server rejected commands as stale.
+        This function will return the KuCoin official server time in UTC as unix epoch.
+        Returned time is an integer value representing time to millisecond precision. 
+        This function should be used to sync client and server time as orders submitted 
+        with a timestamp over 5 seconds old will be rejected by the server. In some cases,
+        client time can lag server time resulting in the server rejected commands as stale.
         
         Parameters
         ----------
-        datetime_output : bool 
-            (Optional) If true, convert UNIX epoch integer to datetime object
+        format : str, optional
+            If `format=unix`, return the time as UTC Unix-epoch with millisecond accuracy. If
+            `format=utc` [default] return a datetime object in UTC time.
         
         Returns
         -------
@@ -937,9 +1102,9 @@ class Client(object):
         url = self._request("get", path)
         resp = self.session.request("get", url)
         if resp.status_code != 200:
-            return logging.error(resp.status_code)
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()["data"]
-        if datetime_output:
+        if format == "unix":
             resp = dt.datetime.utcfromtimestamp(
                 int(resp) / 1000
             )
@@ -965,17 +1130,19 @@ class Client(object):
             Trades must be executed at this price or better
         size : float
             (Optional) Size in base currency to buy or sell.
-            | Size indicates the amount of base currency to buy or sell
-            | Size must be above baseMinSize and below baseMaxSize
-            | Size must be specified in baseIncrement symbol units
-            | Size must be a positive float value
-            | Note: User is required to either specify size or funds. 
+            * Size indicates the amount of base currency to buy or sell
+            * Size must be above baseMinSize and below baseMaxSize
+            * Size must be specified in baseIncrement symbol units
+            * Size must be a positive float value
+
+            Note: User is required to either specify size or funds. 
         funds : float
             (Optional) Amount of funds in quote currency to buy or sell.
-            | Note: User is required to either specify size or funds.
-            | Funds indicates the amount of price [quote] currency to buy or sell.
-            | Funds must be above quoteMinSize and below quoteMaxSize
-            | Size must be specified in quoteIncrement symbol units
+            * Funds indicates the amount of price [quote] currency to buy or sell.
+            * Funds must be above quoteMinSize and below quoteMaxSize
+            * Size must be specified in quoteIncrement symbol units
+            
+            Note: User is required to either specify size or funds.
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1051,17 +1218,19 @@ class Client(object):
             Options: buy or sell
         size : float
             (Optional) Size in base currency to buy or sell.
-            | Size indicates the amount of base currency to buy or sell
-            | Size must be above baseMinSize and below baseMaxSize
-            | Size must be specified in baseIncrement symbol units
-            | Size must be a positive float value
-            | Note: User is required to either specify size or funds. 
+            * Size indicates the amount of base currency to buy or sell
+            * Size must be above baseMinSize and below baseMaxSize
+            * Size must be specified in baseIncrement symbol units
+            * Size must be a positive float value
+
+            Note: User is required to either specify size or funds. 
         funds : float
             (Optional) Amount of funds in quote currency to buy or sell.
-            | Note: User is required to either specify size or funds.
-            | Funds indicates the amount of price [quote] currency to buy or sell.
-            | Funds must be above quoteMinSize and below quoteMaxSize
-            | Size must be specified in quoteIncrement symbol units
+            * Funds indicates the amount of price [quote] currency to buy or sell.
+            * Funds must be above quoteMinSize and below quoteMaxSize
+            * Size must be specified in quoteIncrement symbol units
+
+            Note: User is required to either specify size or funds.
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1123,17 +1292,19 @@ class Client(object):
             Options: buy or sell
         size : float
             (Optional) Size in base currency to buy or sell.
-            | Size indicates the amount of base currency to buy or sell
-            | Size must be above baseMinSize and below baseMaxSize
-            | Size must be specified in baseIncrement symbol units
-            | Size must be a positive float value
-            | Note: User is required to either specify size or funds. 
+            * Size indicates the amount of base currency to buy or sell
+            * Size must be above baseMinSize and below baseMaxSize
+            * Size must be specified in baseIncrement symbol units
+            * Size must be a positive float value
+            
+            Note: User is required to either specify size or funds. 
         funds : float
             (Optional) Amount of funds in quote currency to buy or sell.
-            | Note: User is required to either specify size or funds.
-            | Funds indicates the amount of price [quote] currency to buy or sell.
-            | Funds must be above quoteMinSize and below quoteMaxSize
-            | Size must be specified in quoteIncrement symbol units
+            * Funds indicates the amount of price [quote] currency to buy or sell.
+            * Funds must be above quoteMinSize and below quoteMaxSize
+            * Size must be specified in quoteIncrement symbol units
+
+            Note: User is required to either specify size or funds.
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1203,17 +1374,18 @@ class Client(object):
             Trades must be executed at this price or better
         size : float
             (Optional) Size in base currency to buy or sell.
-            | Size indicates the amount of base currency to buy or sell
-            | Size must be above baseMinSize and below baseMaxSize
-            | Size must be specified in baseIncrement symbol units
-            | Size must be a positive float value
-            | Note: User is required to either specify size or funds. 
+            * Size indicates the amount of base currency to buy or sell
+            * Size must be above baseMinSize and below baseMaxSize
+            * Size must be specified in baseIncrement symbol units
+            * Size must be a positive float value
+            * Note: User is required to either specify size or funds. 
         funds : float
             (Optional) Amount of funds in quote currency to buy or sell.
-            | Note: User is required to either specify size or funds.
-            | Funds indicates the amount of price [quote] currency to buy or sell.
-            | Funds must be above quoteMinSize and below quoteMaxSize
-            | Size must be specified in quoteIncrement symbol units
+            * Funds indicates the amount of price [quote] currency to buy or sell.
+            * Funds must be above quoteMinSize and below quoteMaxSize
+            * Size must be specified in quoteIncrement symbol units
+
+            Note: User is required to either specify size or funds.
         client_oid : int
             (Optional) Unique order ID for identification of orders. 
             Defaults to integer nonce based on unix epoch if unspecified.
@@ -1293,3 +1465,12 @@ class Client(object):
         data_json = self._compact_json_dict(data)
         resp = self.session.request("post", url, data=data_json)
         return resp.json()
+
+    def construct_socket_path(self, private=False):
+        """Construct socketpath from socket detail HTTP request"""
+        socket_detail = self.get_socket_detail(private=private)
+        token = socket_detail["token"]
+        endpoint = socket_detail["instanceServers"][0]["endpoint"]
+        nonce = int(round(time.time(), 3) * 10_000)
+        socket_path = endpoint + f"?token={token}" + f"&[connectId={nonce}]"
+        return socket_path
