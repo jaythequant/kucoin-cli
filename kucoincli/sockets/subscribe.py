@@ -35,7 +35,6 @@ class Subscriptions(object):
             "trades": "/spotMarket/tradeOrders",
             "balance": "/account/balance",
             "debt": "/margin/position",
-            "marginstatus": "/margin/position",
             "loan": "/margin/loan:",
             "stoporder": "/spotMarket/advancedOrders",
         }
@@ -53,7 +52,7 @@ class Subscriptions(object):
         endpoints = {**self.public, **self.private}
         pprint(endpoints)
 
-    def _submit_subscription(self, channel, private=False, ack=False):
+    async def _submit_subscription(self, channel, private=False, ack=False):
         """Submit Kucoin websocket subscription request"""
         headers = {
             "id": int(time.time() * 10_000),
@@ -62,14 +61,14 @@ class Subscriptions(object):
             "privateChannel": private,
             "response": ack,
         }
-        self.socket.send(json.dumps(headers))
-        resp = self.socket.recv()
+        await self.socket.send(json.dumps(headers))
+        resp = await self.socket.recv()
         return resp
 
-    def subscribe(
+    async def subscribe(
         self, channels:str or list, tickers:None or str or list=None, 
         market:None or str or list=None, currency:None or str or list=None, 
-        interval:None or str or list=None, ack=False,
+        interval:None or str=None, ack=False,
     ) -> None:
         """Select set of endpoints and submit authenticated subscriptions
         
@@ -115,19 +114,18 @@ class Subscriptions(object):
             tickers = [tickers]
         if isinstance(currency, str):
             currency = [currency]
-        if isinstance(interval, str):
-            interval = [interval]
         if isinstance(market, str):
             market = [market]
         if ("loan" in channels or "funding" in channels) and not currency:
             raise ValueError("One or more channels require `currency` argument")
         if "kline" in channels and not interval: 
-            raise ValueError("Use of the `kline` endpoint requires `interval`(s)")
+            raise ValueError("Use of the `kline` endpoint requires `interval` argument")
         endpoints = {**self.public, **self.private}
         channels = {key: endpoints[key] for key in channels}
         if "all" in tickers and "market" in channels:
             channels["market"] = self.public["market"] + "all"
-        tickers.remove("all")
+        if "all" in tickers:
+            tickers.remove("all")
         ticker_related = {}
         for key, value in channels.items():
             if value.endswith(":"):
@@ -152,9 +150,8 @@ class Subscriptions(object):
             curr_str = ",".join(currency)
             channels["funding"] = self.public["funding"] + curr_str
         if "kline" in channels:
-            path = channels["kline"]
-            for idx, bar in enumerate(interval):
-                channels[f"kline{idx}"] = f"{path}_{bar}"
+            for idx, ticker in enumerate(tickers):
+                channels[f"kline{idx}"] = f"{self.public['kline']}{ticker}_{interval}"
             del channels["kline"]
         private = {key: channels[key] for key in list(set(self.private).intersection(channels))}
         for key, value in channels.items():
@@ -162,7 +159,9 @@ class Subscriptions(object):
                 private[key] = value
         for k in private.keys():
             del channels[k]
-        for channel in private:
-            self._submit_subscription(channel, private=True, ack=ack)
-        for channel in channels:
-            self._submit_subscription(channel, private=False, ack=ack)
+        for channel in private.values():
+            print(channel)
+            await self._submit_subscription(channel, private=True, ack=ack)
+        for channel in channels.values():
+            print(channel)
+            await self._submit_subscription(channel, private=False, ack=ack)

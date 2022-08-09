@@ -64,7 +64,7 @@ class Client(Subscriptions):
 
     def __init__(self, api_key="", api_secret="", api_passphrase="", sandbox=False, requests_params=None):
 
-        Subscriptions.__init__(api_key, api_secret, api_passphrase)
+        Subscriptions.__init__(self, api_key, api_secret, api_passphrase)
 
         self.logger = logging.getLogger(__name__)
 
