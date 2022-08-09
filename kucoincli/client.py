@@ -64,7 +64,7 @@ class Client(Subscriptions):
 
     def __init__(self, api_key="", api_secret="", api_passphrase="", sandbox=False, requests_params=None):
 
-        super(Subscriptions).__init__()
+        Subscriptions.__init__(api_key, api_secret, api_passphrase)
 
         self.logger = logging.getLogger(__name__)
 
@@ -873,21 +873,19 @@ class Client(Subscriptions):
         ------
         KucoinResponseError
             If HTTP response does not equal 200 or the reponse equals 200, but no data is
-            returned in the JSON object.
+            returned in the JSON object. Common cause of 400 response is invalid API 
+            credentials
         """
         if isinstance(depth, str or None):
-            if depth == "full":
-                format == "numpy"
-                path = f"market/orderbook/level2?symbol={pair.upper()}"
-                url = self._request(
-                    "get", path, api_version=self.API_VERSION3, signed=True
-                )
+            path = f"market/orderbook/level2?symbol={pair.upper()}"
+            url = self._request(
+                "get", path, api_version=self.API_VERSION3, signed=True
+            )
         if isinstance(depth, int):
             if depth <= 100:
                 path = f"market/orderbook/level2_100?symbol={pair.upper()}"
                 url = self._request("get", path)
             else:
-                format == "numpy"
                 path = f"market/orderbook/level2?symbol={pair.upper()}"
                 url = self._request(
                     "get", path, api_version=self.API_VERSION3, signed=True
