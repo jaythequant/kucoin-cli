@@ -13,7 +13,7 @@ from collections import namedtuple
 from kucoincli.utils._utils import _parse_date
 from kucoincli.utils._utils import _parse_interval
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
-from sockets.subscribe import Socket
+from kucoincli.sockets.sockets import Socket
 
 
 class BaseClient(Socket):
