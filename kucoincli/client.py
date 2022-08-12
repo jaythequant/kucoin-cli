@@ -10,39 +10,13 @@ import numpy as np
 import pandas as pd
 import datetime as dt
 from collections import namedtuple
-from kucoincli.utils._helpers import _parse_date
-from kucoincli.utils._helpers import _parse_interval
+from kucoincli.utils._utils import _parse_date
+from kucoincli.utils._utils import _parse_interval
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
-from kucoincli.sockets.subscribe import Subscriptions
+from sockets.subscribe import Socket
 
 
-class Client(Subscriptions):
-
-    """KuCoin REST API wrapper -> https://docs.kucoin.com/#general
-
-    Parameters
-    ----------
-    api_key : str 
-        (Optional) API key generated upon creation of API endpoint on
-        kucoin.com. If no API key is given, the user cannot access functions requiring
-        account level authorization, but can access endpoints that require general auth
-        such as kline historic data.
-    api_secret : str 
-        (Optional) Secret API sequence generated upon create of API
-        endpoint on kucoin.com. See api_keydocs for info on optionality of 
-        variable
-    api_passphrase : str 
-        (Optional) User created API passphrase. Passphrase is 
-        created by the user during API setup on kucoin.com. See api_keydocs for 
-        info on optionality of variable
-    sandbox : bool 
-        If sandbox = True, access a special papertrading API version
-        available for testing trading. For more details visit: https://sandbox.kucoin.com/
-        Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
-        regular kucoin API and may only be obtained from the sandbox website and (2)
-        that sandbox markets are completely seperate than kucoin's regular sites. It is
-        recommended that you not use sandbox as the data is highly corrupted.
-    """
+class BaseClient(Socket):
 
     REST_API_URL = "https://api.kucoin.com"
     SAND_BOX_URL = "https://openapi-sandbox.kucoin.com"
@@ -50,21 +24,10 @@ class Client(Subscriptions):
     API_VERSION2 = "v2"
     API_VERSION3 = "v3"
 
-    ACCOUNT_MAIN = "main"
-    ACCOUNT_TRADE = "trade"
-    ACCOUNT_MARGIN = "margin"
+    def __init__(self, api_key=None, api_secret=None, api_passphrase=None, sandbox=False):
 
-    SIDE_BUY = "buy"
-    SIDE_SELL = "sell"
+        Socket.__init__(self)
 
-    ORDER_LIMIT = "limit"
-    ORDER_MARKET = "market"
-    ORDER_LIMIT_STOP = "limit_stop"
-    ORDER_MARKET_STOP = "market_stop"
-
-    def __init__(self, api_key="", api_secret="", api_passphrase="", sandbox=False, requests_params=None):
-
-        Subscriptions.__init__(self, api_key, api_secret, api_passphrase)
 
         self.logger = logging.getLogger(__name__)
 
@@ -80,16 +43,7 @@ class Client(Subscriptions):
         self.session = self._session()
 
     def _session(self):
-        session = requests.Session()
-        headers = {
-            "Accept": "application/json",
-            "User-Agent": "kucoin-cli",
-            "Content-Type": "application/json",
-        }
-        session.headers.update(headers)
-        # Shim to add default timeout value to get/post requests
-        session.request = functools.partial(session.request, timeout=10)
-        return session
+        pass
 
     def _compact_json_dict(self, data:dict):
         """Convert dict to compact json"""
@@ -156,6 +110,70 @@ class Client(Subscriptions):
             "KC-API-KEY-VERSION": "2",
         }
         return headers
+
+
+class Client(BaseClient):
+
+    """KuCoin REST API wrapper -> https://docs.kucoin.com/#general
+
+    Parameters
+    ----------
+    api_key : str 
+        (Optional) API key generated upon creation of API endpoint on
+        kucoin.com. If no API key is given, the user cannot access functions requiring
+        account level authorization, but can access endpoints that require general auth
+        such as kline historic data.
+    api_secret : str 
+        (Optional) Secret API sequence generated upon create of API
+        endpoint on kucoin.com. See api_keydocs for info on optionality of 
+        variable
+    api_passphrase : str 
+        (Optional) User created API passphrase. Passphrase is 
+        created by the user during API setup on kucoin.com. See api_keydocs for 
+        info on optionality of variable
+    sandbox : bool 
+        If sandbox = True, access a special papertrading API version
+        available for testing trading. For more details visit: https://sandbox.kucoin.com/
+        Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
+        regular kucoin API and may only be obtained from the sandbox website and (2)
+        that sandbox markets are completely seperate than kucoin's regular sites. It is
+        recommended that you not use sandbox as the data is highly corrupted.
+    """
+
+    REST_API_URL = "https://api.kucoin.com"
+    SAND_BOX_URL = "https://openapi-sandbox.kucoin.com"
+    API_VERSION = "v1"
+    API_VERSION2 = "v2"
+    API_VERSION3 = "v3"
+
+    def __init__(self, api_key=None, api_secret=None, api_passphrase=None, sandbox=False, requests_params=None):
+
+        BaseClient.__init__(self, api_key, api_secret, api_passphrase)
+
+        self.logger = logging.getLogger(__name__)
+
+        self.API_KEY = api_key
+        self.API_SECRET = api_secret
+        self.API_PASSPHRASE = api_passphrase
+
+        if sandbox:
+            self.API_URL = self.SAND_BOX_URL
+        else:
+            self.API_URL = self.REST_API_URL
+
+        self.session = self._session()
+
+    def _session(self) -> requests.sessions.Session:
+        session = requests.Session()
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "kucoin-cli",
+            "Content-Type": "application/json",
+        }
+        session.headers.update(headers)
+        # Shim to add default timeout value to get/post requests
+        session.request = functools.partial(session.request, timeout=10)
+        return session
 
     def subusers(self) -> pd.DataFrame:
         """Obtain a list of sub-users"""
@@ -416,9 +434,9 @@ class Client(Subscriptions):
             formatting rules and flexibility of param `begin`. If left unspecified, end 
             will default to the current UTC date and time stamp.
         interval : str
-            Interval at which to return OHLCV data. Default: 1day
-            Intervals: 1min, 3min, 5min, 15min, 30min, 1hour, 2hour, 4hour, 6hour, 
-                8hour, 12hour, 1day, 1week
+            Interval at which to return OHLCV data. Interval options: `["1min", 
+            "3min", "15min", "30min", "1hour", "2hour", "4hour", "6hour", "8hour", 
+            "12hour", "1day", "1week"]`. Default interval `1day`.
         progress_bar : bool 
             Flag to enable progress bar. Does not work in Jupyter notebooks yet
         msg : bool 
@@ -570,7 +588,7 @@ class Client(Subscriptions):
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
             try:
-                df = df.loc[pair, :]
+                df = df.loc[pair.upper(), :]
             except KeyError as e: 
                 raise KeyError("Keys not found in response data", e)
         return df
@@ -968,6 +986,10 @@ class Client(Subscriptions):
         -------
         pd.Series or DataFrame
             Return pandas Series or DataFrame with currency detail
+
+        See Also
+        --------
+        `.symbols`
         """
         if not currency:
             path = "currencies"
@@ -975,7 +997,12 @@ class Client(Subscriptions):
             path = f"currencies/{currency.upper()}"
         url = self._request("get", path)
         resp = self.session.request("get", url)
-        resp = resp.json()["data"]
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        try:
+            resp = resp.json()["data"]
+        except KeyError:
+            raise KucoinResponseError("No data returned. Is `currency` valid?")
         if isinstance(currency, str):
             return pd.Series(resp)
         else:
@@ -1074,7 +1101,7 @@ class Client(Subscriptions):
             raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         return resp.json()["data"]
 
-    def get_server_time(self, format:str="utc") -> int:
+    def get_server_time(self, format:str="unix") -> int:
         """Return server time in UTC time to millisecond granularity
 
         Notes
@@ -1089,7 +1116,7 @@ class Client(Subscriptions):
         ----------
         format : str, optional
             If `format=unix`, return the time as UTC Unix-epoch with millisecond accuracy. If
-            `format=utc` [default] return a datetime object in UTC time.
+            `format=datetime` [default] return a datetime object in UTC time.
         
         Returns
         -------
@@ -1102,367 +1129,11 @@ class Client(Subscriptions):
         if resp.status_code != 200:
             raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()["data"]
-        if format == "unix":
+        if format == "datetime":
             resp = dt.datetime.utcfromtimestamp(
                 int(resp) / 1000
             )
         return resp
-
-    def limit_order(
-        self, symbol:str, side:str, price:float, size:float=None, 
-        funds:float=None, client_oid:int=None, remark:str=None, 
-        tif:str="GTC", stp:str=None, cancel_after:int=None, 
-        postonly:bool=False, hidden:bool=False, iceberg:bool=None, 
-        visible_size:float=None,
-    ):
-        """"API command for placing limit trades in the trade account (non-margin). 
-
-        Parameters
-        ----------
-        symbol : str
-            Pair on which to execute trade (e.g., BTC-USDT)
-        side : str
-            Side on which to execute trade.
-            Options: buy or sell
-        price : float 
-            Trades must be executed at this price or better
-        size : float
-            (Optional) Size in base currency to buy or sell.
-            * Size indicates the amount of base currency to buy or sell
-            * Size must be above baseMinSize and below baseMaxSize
-            * Size must be specified in baseIncrement symbol units
-            * Size must be a positive float value
-
-            Note: User is required to either specify size or funds. 
-        funds : float
-            (Optional) Amount of funds in quote currency to buy or sell.
-            * Funds indicates the amount of price [quote] currency to buy or sell.
-            * Funds must be above quoteMinSize and below quoteMaxSize
-            * Size must be specified in quoteIncrement symbol units
-            
-            Note: User is required to either specify size or funds.
-        client_oid : int
-            (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch if unspecified.
-        remark : str
-            (Optional) Add a remark to the order execution. Remarks may not 
-            exceed 100 utf-8 characters in length.
-        stp : str
-            (Optional) Self-trade prevention parameters. Primarily used by market makers.
-            Options: CN, CO, CB, or DC. Defaults to None.
-        tif : str
-            Dictate time in force order types. If unspecified order will be good-till-cancel. 
-            Order types: GTC [default], GTT, IOC, or FOK
-        cancel_after : int
-            Cancel after n seconds. `cancel_after` requires that `tif` = GTT.
-        postonly : bool 
-            If postonly is true, orders may only be executed at the maker fee. 
-            Orders that would receive taker will be rejected.
-        hidden : bool 
-            If true, orders will not be publicly visible i.e. will not appear in orderbook.
-        
-        Returns
-        -------
-        dict
-            JSON dict with order execution details
-        """
-        data = {
-            "symbol": symbol,
-            "side": side,
-            "type": self.ORDER_LIMIT,
-            "price": price,
-        }
-        if size:
-            data["size"] = size
-        if funds:
-            data["funds"] = funds
-        if client_oid:
-            data["clientOid"] = client_oid
-        else:
-            data["clientOid"] = str(int(time.time() * 10000))
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
-        if tif:
-            data["timeInForce"] = tif
-        if cancel_after:
-            data["cancelAfter"] = cancel_after
-        if postonly:
-            data["postOnly"] = postonly
-        if hidden:
-            data["hidden"] = hidden
-        if iceberg:
-            data["iceberg"] = iceberg
-            data["visible_size"] = visible_size
-        path = "orders"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        return resp.json()
-
-    def market_order(
-        self, symbol:str, side:str, size:float=None, funds:float=None, 
-        client_oid=None, remark=None, stp=None,
-    ):
-        """API command for executing market orders in the trade account (non-margin).
-        
-        Parameters
-        ----------
-        symbol : str
-            Pair on which to execute trade (e.g., BTC-USDT)
-        side : str
-            Side on which to execute trade.
-            Options: buy or sell
-        size : float
-            (Optional) Size in base currency to buy or sell.
-            * Size indicates the amount of base currency to buy or sell
-            * Size must be above baseMinSize and below baseMaxSize
-            * Size must be specified in baseIncrement symbol units
-            * Size must be a positive float value
-
-            Note: User is required to either specify size or funds. 
-        funds : float
-            (Optional) Amount of funds in quote currency to buy or sell.
-            * Funds indicates the amount of price [quote] currency to buy or sell.
-            * Funds must be above quoteMinSize and below quoteMaxSize
-            * Size must be specified in quoteIncrement symbol units
-
-            Note: User is required to either specify size or funds.
-        client_oid : int
-            (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch if unspecified.
-        remark : str
-            (Optional) Add a remark to the order execution. Remarks may not 
-            exceed 100 utf-8 characters in length.
-        stp : str
-            (Optional) Self-trade prevention parameters. Primarily used by market makers.
-            Options: CN, CO, CB, or DC. Defaults to None.
-
-        Returns
-        -------
-        dict
-            JSON dict with order execution details
-        """
-        data = {"side": side, "symbol": symbol, "type": self.ORDER_MARKET}
-        if size:
-            data["size"] = size
-        if funds:
-            data["funds"] = funds
-        if client_oid:
-            data["clientOid"] = client_oid
-        else:
-            data["clientOid"] = int(time.time() * 10000)
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
-        path = "orders"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        return resp.json()
-
-    def margin_market_order(
-        self, symbol:str, side:str, size:float=None, funds:float=None, 
-        client_oid:str=None, remark:str=None, stp:str=None, mode:str="cross", 
-        autoborrow:bool=True,
-    ):
-        """API command for placing market trades on margin. 
-
-        Notes
-        -----
-            Due to a glitch in KuCoin's API handling of autoborrowed funds, the server
-            will sometimes return the following:
-                `{'code': '300000', 'msg': 'Order funds invalid.'}`
-            This issue arises with certain combinations of side, size/funds and only 
-            while autoborrow is true. I am currently working on a way around this, but 
-            as the glitch appears to be server side there may be no elegant solution.
-            Users are recommended to either use the `margin_limit_order` function which works
-            as intended or to manually borrow funds and set autoborrow to False.
-
-        Parameters
-        ----------
-        symbol : str
-            Pair on which to execute trade (e.g., BTC-USDT)
-        side : str
-            Side on which to execute trade.
-            Options: buy or sell
-        size : float
-            (Optional) Size in base currency to buy or sell.
-            * Size indicates the amount of base currency to buy or sell
-            * Size must be above baseMinSize and below baseMaxSize
-            * Size must be specified in baseIncrement symbol units
-            * Size must be a positive float value
-            
-            Note: User is required to either specify size or funds. 
-        funds : float
-            (Optional) Amount of funds in quote currency to buy or sell.
-            * Funds indicates the amount of price [quote] currency to buy or sell.
-            * Funds must be above quoteMinSize and below quoteMaxSize
-            * Size must be specified in quoteIncrement symbol units
-
-            Note: User is required to either specify size or funds.
-        client_oid : int
-            (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch if unspecified.
-        remark : str
-            (Optional) Add a remark to the order execution. Remarks may not 
-            exceed 100 utf-8 characters in length.
-        stp : str
-            (Optional) Self-trade prevention parameters. Primarily used by market makers.
-            Options: CN, CO, CB, or DC. Defaults to None.
-        mode : str
-            User may trade on cross margin or isolated margin. 
-            Default mode = cross; Options: cross or isolated
-        autoborrow : bool 
-            If true, system will automatically borrow at the optimal interest rate prior 
-            to placing the requested order. 
-
-        Returns
-        -------
-        dict
-            JSON dict with order execution details
-        """
-        data = {
-            "side": side,
-            "symbol": symbol,
-            "type": self.ORDER_MARKET,
-            "marginMode": mode,
-            "autoBorrow": autoborrow,
-        }
-        if size:
-            data["size"] = size
-        if funds:
-            data["funds"] = funds
-        if client_oid:
-            data["clientOid"] = client_oid
-        else:
-            data["clientOid"] = int(time.time() * 10000)
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
-        if mode != "cross":
-            data["marginMode"] = mode
-        path = "margin/order"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = requests.request("post", url, data=data_json)
-        return resp.json()
-
-
-    def margin_limit_order(
-        self, symbol:str, side:str, price:float, size:float=None, 
-        funds:float=None, client_oid:str=None, remark:str=None, 
-        stp:str=None, mode:str="cross", autoborrow:bool=True, 
-        tif:str="GTC", cancel_after:int=None, postonly:bool=False, 
-        hidden:bool=False, iceberg:bool=None, visible_size:float=None,
-    ) -> dict: 
-        """API command for placing margin limit trades. 
-
-        Parameters
-        ----------
-        symbol : str
-            Pair on which to execute trade (e.g., BTC-USDT)
-        side : str
-            Side on which to execute trade.
-            Options: buy or sell
-        price : float 
-            Trades must be executed at this price or better
-        size : float
-            (Optional) Size in base currency to buy or sell.
-            * Size indicates the amount of base currency to buy or sell
-            * Size must be above baseMinSize and below baseMaxSize
-            * Size must be specified in baseIncrement symbol units
-            * Size must be a positive float value
-            * Note: User is required to either specify size or funds. 
-        funds : float
-            (Optional) Amount of funds in quote currency to buy or sell.
-            * Funds indicates the amount of price [quote] currency to buy or sell.
-            * Funds must be above quoteMinSize and below quoteMaxSize
-            * Size must be specified in quoteIncrement symbol units
-
-            Note: User is required to either specify size or funds.
-        client_oid : int
-            (Optional) Unique order ID for identification of orders. 
-            Defaults to integer nonce based on unix epoch if unspecified.
-        remark : str
-            (Optional) Add a remark to the order execution. Remarks may not 
-            exceed 100 utf-8 characters in length.
-        stp : str
-            (Optional) Self-trade prevention parameters. Primarily used by market makers.
-            Options: CN, CO, CB, or DC. Defaults to None.
-        mode : str
-            User may trade on cross margin or isolated margin. 
-            Default mode = cross; Options: cross or isolated
-        autoborrow : bool 
-            If true, system will automatically borrow at the optimal interest rate prior 
-            to placing the requested order. 
-        tif : str
-            Dictate time in force order types. If unspecified order will be good-till-cancel. 
-            Order types: GTC [default], GTT, IOC, or FOK
-        cancel_after : int
-            Cancel after n seconds. `cancel_after` requires that `tif` = GTT.
-        postonly : bool 
-            If postonly is true, orders may only be executed at the maker fee. 
-            Orders that would receive taker will be rejected.
-        hidden : bool 
-            If true, orders will not be publicly visible i.e. will not appear in orderbook.
-        iceberg : bool
-            If true, only a portion of the order will be visible in the orderbook. Use
-            `visible_size` to control percentage of order size visible.
-        visible_size : float
-            If `iceberg` is true, use this to set % of order visible in orderbook. Note that
-            more than 1/20th of order must be visible in the orderbook or the order will be 
-            rejected. To hide the full order use `hidden` parameter.
-
-        Returns
-        -------
-        dict
-            JSON dict with order execution details
-        """
-        if not size and not funds:
-            raise ValueError("Must specify either size or funds parameter.")
-        if size and funds:
-            raise ValueError("May not specify both size and funds.")
-
-        data = {
-            "side": side,
-            "symbol": symbol,
-            "price": price,
-            "type": self.ORDER_LIMIT,
-            "marginMode": mode,
-            "autoBorrow": autoborrow,
-        }
-        if size:
-            data["size"] = size
-        if funds:
-            data["funds"] = funds
-        if client_oid:
-            data["clientOid"] = client_oid
-        else:
-            data["clientOid"] = int(time.time() * 10_000)
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
-        if mode != "cross":
-            data["marginMode"] = mode
-        if cancel_after and tif == "GTT":
-            data["cancelAfter"] = cancel_after
-        if hidden:
-            data["hidden"] = hidden
-        if postonly:
-            data["postOnly"] = postonly
-        if iceberg:
-            data["iceberg"] = iceberg
-            data["visible_size"] = visible_size
-        path = "margin/order"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        return resp.json()
 
     def construct_socket_path(self, private=False):
         """Construct socketpath from socket detail HTTP request"""
@@ -1472,3 +1143,139 @@ class Client(Subscriptions):
         nonce = int(round(time.time(), 3) * 10_000)
         socket_path = endpoint + f"?token={token}" + f"&[connectId={nonce}]"
         return socket_path
+
+    def order(
+        self, symbol:str, side:str, size:float=None, funds:float=None, type:str="market", 
+        price:float=None, stp:str=None, oid:str=None, remark:str=None, margin:bool=False, 
+        mode:str="cross", autoborrow:bool=True, tif:str="GTC", hidden:bool=False, 
+        iceberg:bool=False, visible_size:float=None, timeout:int=None, postonly:bool=False,
+    ) -> dict:
+        """Place limit and market orders using spot trade, cross margin, and isolated margin 
+
+        Parameters
+        ----------
+        symbol : str
+            Specify trading pair for execution (e.g., BTC-USDT)
+        side : str
+            Specify which side of the trade to execute on (i.e., `buy` or `sell`)
+        size : float, optional
+            Size in base currency (i.e. the numerator) Quick notes on `size`:
+            * Size indicates the amount of base currency to buy or sell
+            * Size must be above `baseMinSize` and below `baseMaxSize`
+            * Size must be specified in `baseIncrement` symbol units
+            * Size must be a positive float value
+            Note: User is required to either specify size or funds. 
+        funds : float, optional
+            Amount of funds in quote currency (denominator) to buy or sell. `funds` 
+            is not a valid argument for limit orders. Quick notes on `funds` parameter:
+            * Funds indicates the amount of price [quote] currency to buy or sell.
+            * Funds must be above `quoteMinSize` and below `quoteMaxSize`
+            * Size must be specified in `quoteIncrement` symbol units
+            * Size must be positive float value
+
+            Note: User is required to either specify size or funds.
+        price : float, optional
+            Set specific price at which to buy (sell) the trading pair. Price is
+            only available to limit orders. If `price` while `type=market`, the
+            order will be submitted as a limit order.
+        mode : str, optional
+            KuCoin supports both `cross` [DEFAULT] and `isolated` margin modes. Please 
+            review KuCoin's account type information for more information.
+        autoborrow : bool, optional
+            Control whether or not the system will automatically borrow funds when
+            executing a margin trade with insufficient real balance. If 
+            `autoborrow=True` [DEFAULT], the exchange will automatically borrow 
+            funds at the best interest rate available. If `false`, users must
+            submit manual borrow orders.
+        oid : int, optional
+            Unique order ID for identification of orders. OID can be set via this 
+            argument. If no OID specified, a Unix-time based nonce will be generated
+            and attached to the order. 
+        remark : str, optional
+            Add a maximum 100 character UTF-8 remark to the order execution.
+        stp : str, optional
+            [LIMIT ONLY] TP or Self-Trade Prevention parameters. Primarily used by 
+            market makers or users who have many multidirectional orders that could 
+            trade against each other. STP is not enabled by default. Options for STP:
+            * `CN`: Cancel newest. If `tif=FOK`, `stp` will be forced to `CN`.
+            * `CO`: Cancel oldest
+            * `CB`: Cancel both
+            * `DC`: Decrease and cancel. Currently not supported for market orders.
+
+        tif : str, optional
+            [LIMIT ONLY] Add a Time-in-Force policy to the trade execution. If `tif` 
+            unspecified, the default policy is good-to-cancelled. All `tif` options:
+            * `GTC`: Good-to-Cancelled. Order will remain on the books till filled or 
+            cancelled
+            * `GTT`: Good-to-Time. Order will remain on books till filled or till 
+              n seconds have passed as specified by `timeout` argument.
+            * `IOC`: Immediate or Cancel. IOC orders are filled immediately and not
+              added to the book. Any partial amount that cannot be immediately filled
+              is cancelled.
+            * `FOK`: Fill or Kill. If entire order cannot be filled at `price`, the
+              entire order will be rejected.
+
+        timeout : int, optional
+            Cancel after n seconds. `timeout` requires Good-to-Time (`tif=GTT`)
+            policy. If `timeout`, then `tif` will be forced to GTT.
+        postonly : bool, optional
+            If postonly is true, orders may only be executed at the maker fee. 
+            Orders that would receive taker will be rejected. Postonly is invalid
+            when `tif=FOK or IOC`.
+        hidden : bool, optional
+            [LIMIT ONLY] Orders will not be visible in the orderbook.
+        iceberg : bool, optional
+            Only a portion of the order will be visible in the orderbook. Use
+            `visible_size` to control percentage of order size visible.
+        visible_size : float, optional
+            Control % of order visible in orderbook. Note that more than 1/20th of 
+            the order must be visible or the order will be rejected. To hide the 
+            full order use `hidden`.
+
+        Returns
+        -------
+        dict
+            JSON dict with order execution details
+        """
+        if price:
+            type = "limit"
+        if visible_size:
+            iceberg = True
+        if not size and not funds:
+            raise ValueError("Must specify either `size` or `funds`")
+        if size and funds:
+            raise ValueError("May not specify both `size` and `funds`")
+        if type == "limit" and funds: 
+            raise ValueError("Limit orders must use `size` argument")
+        path = "orders"
+        data = {"side": side, "symbol": symbol, "type": type}
+        data["clientOid"] = oid if oid else int(time.time() * 10000)
+
+        if size:
+            data["size"] = size
+        if funds and type == "market":
+            data["funds"] = funds
+        if margin:
+            path = "margin/order" # Update to margin path
+            data["marginMode"] = mode
+            data["autoBorrow"] = autoborrow
+        if type == "limit":
+            data["price"] = price
+            data["hidden"] = hidden
+            data["postOnly"] = postonly
+            data["iceberg"] = iceberg
+            data["timeInForce"] = tif
+            if timeout:
+                data["timeInForce"] = "GTT"
+                data["cancelAfter"] = timeout
+            if iceberg:
+                data["visibleSize"] = visible_size
+        if remark:
+            data["remark"] = remark
+        if stp:
+            data["stp"] = stp
+
+        url = self._request("post", path, signed=True, data=data)
+        data_json = self._compact_json_dict(data)
+        resp = self.session.request("post", url, data=data_json)
+        return resp.json()

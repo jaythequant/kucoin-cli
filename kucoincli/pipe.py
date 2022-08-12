@@ -5,7 +5,7 @@ import timedelta
 import math
 import datetime as dt
 from kucoincli.client import Client
-from kucoincli.utils._helpers import _parse_date
+from kucoincli.utils._utils import _parse_date
 import logging
 import time
 
