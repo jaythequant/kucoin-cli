@@ -588,7 +588,7 @@ class Client(BaseClient):
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
             try:
-                df = df.loc[pair.upper(), :]
+                df = df.loc[pair, :]
             except KeyError as e: 
                 raise KeyError("Keys not found in response data", e)
         return df
@@ -1164,6 +1164,7 @@ class Client(BaseClient):
             * Size must be above `baseMinSize` and below `baseMaxSize`
             * Size must be specified in `baseIncrement` symbol units
             * Size must be a positive float value
+            
             Note: User is required to either specify size or funds. 
         funds : float, optional
             Amount of funds in quote currency (denominator) to buy or sell. `funds` 
