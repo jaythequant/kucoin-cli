@@ -1,1 +1,2 @@
 sphinx-book-theme
+kucoin-cli==1.2.7
