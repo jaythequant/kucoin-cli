@@ -103,6 +103,7 @@ Quickstart
   order = client.order(
       symbol="BTC-USDT",
       side="sell",
+      price=24_000,
       size=1.0000,
       tif="GTT",
       cancel_after=600,
