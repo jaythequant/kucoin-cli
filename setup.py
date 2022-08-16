@@ -10,13 +10,14 @@ setuptools.setup(
     version=version,
     author="James VanLandingham",
     author_email="jameslvanlandingham@gmail.com",
-    description="Kucoin API and websocket client",
+    description="Kucoin API and WebSocket client",
     long_description=long_description,
     long_description_content_type="text/markdown",
     url="https://github.com/jaythequant/kucoin-cli",
     project_urls={
         "Github Dist": "https://github.com/jaythequant/kucoin-cli",
-        "PyPi Dist": f"https://pypi.org/project/kucoin-cli/{version}/"
+        "PyPi Dist": f"https://pypi.org/project/kucoin-cli/{version}/",
+        "Readthedocs": "https://kucoin-cli.readthedocs.io/en/latest/",
     },
     classifiers=[
         "Programming Language :: Python :: 3",
@@ -37,7 +38,6 @@ setuptools.setup(
         "six",
         "urllib3",
         "websockets",
-        "progress_bar",
         "timedelta",
         "sqlalchemy",
         "progress",

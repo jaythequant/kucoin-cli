@@ -113,6 +113,7 @@ Quickstart
 
   # Obtain the full orderbook depth for XRP-USDT as a namedtuple containing numpy arrays
   orderbook = client.orderbook("XRP-USDT", depth="full", format="numpy")
+  
   # Specify `format="pd"` to obtain an identical result wrapped in a pandas dataframe
   orderbook = client.orderbook("XRP-USDT", depth="full", format="pd") 
 

@@ -65,3 +65,12 @@ def _parse_interval(begin, end, interval) -> list:
         begin = end - dt.timedelta(minutes=n)
         call_ranges.append((begin, end))
         return call_ranges
+
+
+def _str_to_list(self, lst:list) -> list:
+    """Convert any string type variables to list type"""
+    l = []
+    for var in lst:
+        var = [var] if isinstance(var, str) else var
+        l.append(var)
+    return l

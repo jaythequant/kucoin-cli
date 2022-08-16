@@ -1,6 +1,7 @@
 import time
 import json
 from pprint import pprint
+from utils._utils import _str_to_list
 
 
 class Socket(object):
@@ -121,7 +122,7 @@ class Socket(object):
         """
         if not self.socket:
             raise ValueError("Missing open socket connection")
-        channels, ticker, currency, market = self._str_to_list([channels, ticker, currency, market])
+        channels, ticker, currency, market = _str_to_list([channels, ticker, currency, market])
         if ("loan" in channels or "funding" in channels) and not currency:
             raise ValueError("One or more channels require `currency` argument")
         if "kline" in channels and not interval: 
@@ -165,11 +166,3 @@ class Socket(object):
             else:  
                 channels[f"{endpoint}{idx}"] = f"{self.endpoints[endpoint]}{var}"
         del channels[endpoint]
-
-    def _str_to_list(self, lst:list) -> list:
-        """Convert any string type variables to list type"""
-        l = []
-        for var in lst:
-            var = [var] if isinstance(var, str) else var
-            l.append(var)
-        return l
