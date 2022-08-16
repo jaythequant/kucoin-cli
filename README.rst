@@ -22,11 +22,11 @@ trades such as HFT, market-making, and long-short strategies. Wherever possible,
 acquisition enpoints have been thoughtfully constructed to have rich configurability reducing time needed to clean and filter data. Trading functions are
 explicitly geared towards simplicity with seamless margin integration. Of special note, OHLCV acquisition from the KuCoin REST API is a has been overhauled
 to enable to user to query a list of assets over any time period rather than the standard single asset with a limit of 1500 bars of historic data. For large scale
-ML projects, leverage the `kucoincli.pipe` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database structures.
+ML projects, leverage the ``kucoincli.pipe`` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database structures.
 
-* Automate the generation of a enormous SQL databases with `kucoincli.pipe`
-* Take complex trading algorithms live via websockets using `kucoincli.socket` [work in progress]
-* Quickly obtain, clean, and organize large amounts of data for use in RL/ML models with `kucoincli.client`
+* Automate the generation of a enormous SQL databases with ``kucoincli.pipe``
+* Take complex trading algorithms live via websockets using ``kucoincli.socket`` [work in progress]
+* Quickly obtain, clean, and organize large amounts of data for use in RL/ML models with ``kucoincli.client``
 
 **Disclaimer: This is an unofficial implementation of the KuCoin Rest and Websocket API v2. Use this package at your own risk.**
 
@@ -42,13 +42,15 @@ Roadmap
 Features
 ++++++++
 * One-line database pipeline. Open a high stability pipe from the KuCoin OHLC(V) endpoint to your SQL database
-  * Automatically creates database or adds to pre-existing db
-  * Capable of handling multi-day data acqusitions sessions through dynamic timeout mechanism
-  * Take a look at a pre-built example in the `examples` folder available at `github <https://github.com/jaythequant/kucoin-cli>`_
+
+  - Automatically creates database or adds to pre-existing db
+  - Capable of handling multi-day data acqusitions sessions through dynamic timeout mechanism
+  - Take a look at a pre-built example in the ``examples`` folder available at `my github <https://github.com/jaythequant/kucoin-cli>`_
   
 * Highly configurable data acquisitions endpoints
-  * Spend less time cleaning and managing data
-  * Checkout `.ohlcv`, `.orderbook`, `.symbols`, and `.all_tickers`
+
+  - Spend less time cleaning and managing data
+  - Checkout ``.ohlcv``, ``.orderbook``, ``.symbols``, and ``.all_tickers``
   
 * Access to 99%+ of KuCoin REST and Websocket endpoints
 * Seamless order management between Spot and Margin markets
@@ -111,16 +113,15 @@ Quickstart
   # Obtain the full orderbook depth for XRP-USDT as a namedtuple containing numpy arrays
   orderbook = client.orderbook("XRP-USDT", depth="full", format="numpy")
   # Specify `format="pd"` to obtain an identical result wrapped in a pandas dataframe
-  orderbook = client.orderbook("XRP-USDT", depth="full", format="numpy") 
+  orderbook = client.orderbook("XRP-USDT", depth="full", format="pd") 
 
 
 Why `KuCoin <https://www.kucoin.com/>`_? 
 ++++++++++++++++++++++++++++++++++++++++
-* **For U.S. based customer this is one of the last remaining "chaotic" exchanges**
+* **For U.S. based customer, KuCoin is one of the few non-KYC exchanges**
 * Industry low transactions fees 
-* High liquidity across coins and a wide offering of shitcoins
-* Frequent additions of speculative coins 
-* Among the least regulated exchanges
+* High liquidity across coins and a wide offering of alts
+* Frequent new coin listings
   
 Consider donating:
 ++++++++++++++++++
