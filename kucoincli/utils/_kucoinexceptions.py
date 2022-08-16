@@ -11,3 +11,7 @@ class KucoinResponseError(Error):
 class HTTPError(Error):
     """Raise when kucoin API returns HTTP response != 200"""
     pass
+
+class MissingDataError(Error):
+    """Raise when data is missing or undelivered"""
+    pass

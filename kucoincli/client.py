@@ -13,7 +13,7 @@ from collections import namedtuple
 from kucoincli.utils._utils import _parse_date
 from kucoincli.utils._utils import _parse_interval
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
-from kucoincli.sockets.sockets import Socket
+from kucoincli.sockets import Socket
 
 
 class BaseClient(Socket):
@@ -27,7 +27,6 @@ class BaseClient(Socket):
     def __init__(self, api_key=None, api_secret=None, api_passphrase=None, sandbox=False):
 
         Socket.__init__(self)
-
 
         self.logger = logging.getLogger(__name__)
 
@@ -548,28 +547,38 @@ class Client(BaseClient):
         else:
             return dfs[0].sort_index(ascending=ascending)
 
-    def symbols(self, pair:str or list=None, market:str or None=None) -> pd.DataFrame or pd.Series:
-        """Query API for dataframe containing detailed list of trading pairs
+    def symbols(
+        self, pair:str or list or None=None, market:str or list or None=None, 
+        marginable:str or list or None=None, quote:str or list or None=None,
+        base:str or list or None=None, tradable:str or list or None=None,
+    ) -> pd.DataFrame or pd.Series:
+        """Highly configurable query for detailed list of currency pairs
 
-        This is the primary trading pair detail endpoint for users. The returned values
-        outline, in details, the trading parameters neccesary to successfully
-        execute trades. Several other pair, currency, and market detail endpoints are available,
-        but these endpoints primarily contain duplicate information to this detail or 
-        offer information largely unrelated to trade execution.
-
-        Notes
-        -----
-        There are several other currency detail endpoints: 
-        * `.get_currencies()`
-        * `.get_currency_detail()
-        * `.all_tickers`
-        * `.get_marginable_details()`
+        Primary trading pair detail endpoint for users. This function will return an outline of 
+        trading details for all pairs on the KuCoin platform. This function is highly configurable
+        accepting several filtering arguments to return a more focused look at the market.
         
         Parameters
         ----------
-        currency : str
-            (Optional) Specify a single pair or list of pairs to query.
-            If currency = None, return a dataframe of all trading pairs.
+        currency : str or list or None, optional
+            Specify a single pair or list of pairs to query. If `currency=None`, return 
+            all trading pairs
+        market : str or list or None, optional
+            Filter response by trading market. If `market=None` return all markets. Markets:
+            `['ALTS', 'BTC', 'DeFi', 'NFT', 'USDS', 'KCS', 'Polkadot', 'ETF', 'FIAT']`
+        base : str or list or None, optional
+            Specify explicit base currency or list of currencies. If `base_curr=None` 
+            [DEFAULT], all base currencies will be returned.
+        quote : str or list or None, optional
+            Specify explicit quote currency or list of currencies. If `base_curr=None` 
+            [DEFAULT], all quote currencies will be returned.
+        marginable : bool or None
+            If `marginable=True`, return only marginable securities. If `marginable=False` return only
+            securities which cannot be traded on margin. If `marginable=None` [DEFAULT] return all
+            trading pairs regardless of marginability.
+        tradable : bool or None
+            If `tradable=True`, return trading-enabled securities. If `trading=False` return untradable
+            listed pairs. If `tradable=None` [DEFAULT], return all securites regardless of tradability.
 
         Returns
         -------
@@ -578,6 +587,14 @@ class Client(BaseClient):
             If a list of pairs is provided in the `currency` parameter, return a
             DataFrame containing only the specified pairs. If a single pair is 
             provided, return a pandas Series with the pair trade details.
+
+        
+        See Also
+        -----
+        There are several other currency detail endpoints: 
+        * `.get_currency_detail`
+        * `.all_tickers`
+        * `.get_marginable_details`
         """
         path = "symbols"
         url = self._request("get", path)
@@ -588,10 +605,23 @@ class Client(BaseClient):
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
             try:
-                df = df.loc[pair, :]
+                df = df.loc[pair, :]            
             except KeyError as e: 
                 raise KeyError("Keys not found in response data", e)
-        return df
+        if marginable is not None:
+            df = df[df["isMarginEnabled"] == marginable]
+        if market is not None:
+            market = [market] if isinstance(market, str) else market
+            df = df[df["market"].isin(market)]
+        if base is not None:
+            base = [base] if isinstance(base, str) else base
+            df = df[df["baseCurrency"].isin(base)]
+        if quote is not None:
+            quote = [quote] if isinstance(quote, str) else quote
+            df = df[df["quoteCurrency"].isin(quote)]
+        if tradable is not None:
+            df[df["enableTrading"] == tradable]
+        return df.squeeze()
 
     def get_margin_data(self, currency:str) -> pd.DataFrame:
         """Query API for the last 300 fills in the lending and borrowing market 
@@ -668,6 +698,7 @@ class Client(BaseClient):
             Return DataFrame object with marginable trading pairs and
             relevant trade details for each pair.
         """
+        warnings.warn("This endpoint will be deprecated in the near future. Please use `.symbols`")
         if base:
             if isinstance(base, str):
                 base = [base]
@@ -952,19 +983,21 @@ class Client(BaseClient):
                 orderbook.asks = orderbook.asks[:depth, :]
             return orderbook
 
-    def all_tickers(self) -> pd.DataFrame:
+    def all_tickers(self, pair:str or list or None=None, quote:str or list or None=None) -> pd.DataFrame:
         """Query entire market for 24h trading statistics
-        
+
         Parameters
         ----------
-        round : int 
-            Round price data to n decimal places. Used to supress 
-            scientific notation on output. Set to None to disable
+        pair : str or list or None, optional
+            Filter trading pairs by specific currency or list or currencies
+        quote : str or list or None, optional
+            Filter trading currencies by quote currency (right side of trading pair)
 
         Returns
         -------
-        DataFrame
-            Returns pandas DataFrame containing recent trade data for entire market
+        DataFrame or Series
+            Returns pandas DataFrame or Series containing recent trade data for entire market or
+            if `pair` or `quote` is specified, a subset of the market.
         """
         path = "market/allTickers"
         url = self._request("get", path)
@@ -972,7 +1005,15 @@ class Client(BaseClient):
         resp = resp.json()["data"]
         df = pd.DataFrame(resp["ticker"]).drop("symbolName", axis=1)
         df.set_index("symbol", inplace=True)
-        return df
+        if pair:
+            pair = [pair] if isinstance(pair, str) else pair
+            df = df[df.index.isin(pair)]
+        if quote is not None:
+            quote = [quote] if isinstance(quote, str) else quote
+            quote_currs = df.index.str.split("-", expand=True).get_level_values(level=1)
+            mask = quote_currs.isin(quote)
+            df = df[mask]
+        return df.squeeze()
 
     def get_currency_detail(self, currency:str or None=None) -> pd.Series or pd.DataFrame:
         """Query API for currency or list of currencies including precision and marginability
@@ -990,6 +1031,7 @@ class Client(BaseClient):
         See Also
         --------
         `.symbols`
+        `.all_tickers`
         """
         if not currency:
             path = "currencies"
@@ -1009,8 +1051,8 @@ class Client(BaseClient):
             return pd.DataFrame(resp).set_index("currency")
 
 
-    def get_full_currency_detail(self, currency):
-        """Currently not fully implemented
+    def get_currency_chains(self, currency):
+        """Query specific currency for withdrawal information per chain
 
         Parameters
         ----------
@@ -1061,22 +1103,6 @@ class Client(BaseClient):
         resp = self.session.request("get", url)
         resp = resp.json()["data"]
         return pd.Series(resp, name=f"{fiat} Denominated")
-
-    def marginable_currency_info(self) -> pd.DataFrame:
-        """Get marginable currencies with general (non-trade) details
-        
-        Returns
-        -------
-        DataFrame
-            Returns pandas DataFrame with non-trade related details for all
-            marginable details.
-        """
-        df = self.get_currencies()
-        try:
-            df = df[df["isMarginEnabled"] == True]
-        except KeyError:
-            raise KucoinResponseError("No message data received.")
-        return df
 
     def margin_config(self) -> dict:
         """Pull margin configuration as JSON dictionary"""
@@ -1280,3 +1306,13 @@ class Client(BaseClient):
         data_json = self._compact_json_dict(data)
         resp = self.session.request("post", url, data=data_json)
         return resp.json()
+
+    def debtratio(self) -> float:
+        """Pull current cross margin debt ratio as float value"""
+        path = "margin/account"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = resp.json()
+        return float(resp["data"]["debtRatio"])

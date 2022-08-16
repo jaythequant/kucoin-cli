@@ -18,16 +18,15 @@ Why use this library over `python-kucoin <https://github.com/sammchardy/python-k
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
 This package was written by a data analyst for data analysts. Specifically designed for fast, efficient data acquisition and high complexity 
-trades such as HFT, market-making, and long-short strategies. Essentially all REST endpoints output to pandas Dataframes, key data acquisition 
-functions include rich features for acquiring large amounts of historic data easily, and the trading side of the package specializes in the 
-managment of margin where I found other packages to be lacking. Of special note, OHLCV acquisition from the KuCoin REST API is a 
-bit of a bear to handle as you can only query a single ticker at a time to a max of 1500 bars. Thanks to the magic of pandas, this 
-package has a one-liner capable of calling as many tickers or bars as desired. Perhaps best of all, the package comes with a fully-built one-
-line data pipeline able to create and update your very own SQL database with almost no effort. 
+trades such as HFT, market-making, and long-short strategies. Wherever possible, endpoints have been neatly wrapped to pandas Dataframes, key data 
+acquisition enpoints have been thoughtfully constructed to have rich configurability reducing time needed to clean and filter data. Trading functions are
+explicitly geared towards simplicity with seamless margin integration. Of special note, OHLCV acquisition from the KuCoin REST API is a has been overhauled
+to enable to user to query a list of assets over any time period rather than the standard single asset with a limit of 1500 bars of historic data. For large scale
+ML projects, leverage the `kucoincli.pipe` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database structures.
 
-* Automate the generation of a PSQL database with over 400M rows of OHLCV data
-* Take complex trading algorithms live via websockets
-* Quickly obtain, clean, and organize large amounts of data for use in RL/ML models
+* Automate the generation of a enormous SQL databases with `kucoincli.pipe`
+* Take complex trading algorithms live via websockets using `kucoincli.socket` [work in progress]
+* Quickly obtain, clean, and organize large amounts of data for use in RL/ML models with `kucoincli.client`
 
 **Disclaimer: This is an unofficial implementation of the KuCoin Rest and Websocket API v2. Use this package at your own risk.**
 
@@ -42,14 +41,17 @@ Roadmap
 
 Features
 ++++++++
-* One-line database pipeline. Open a high stability pipe from kucoin's OHLC(V) endpoint to a database of your creation
+* One-line database pipeline. Open a high stability pipe from the KuCoin OHLC(V) endpoint to your SQL database
   * Automatically creates database or adds to pre-existing db
-  * Can handle multi-day data acqusitions sessions through dynamic timeout mechanism
-* Feature rich OHLC(V) acquisition
-  * Query multiple currencies simultaneously 
-  * Obtain clean pandas DataFrame output of paganated data 
-* Access to 99%+ of REST and Websocket endpoints
-* Fully implemented margin trading features
+  * Capable of handling multi-day data acqusitions sessions through dynamic timeout mechanism
+  * Take a look at a pre-built example in the `examples` folder available at `github <https://github.com/jaythequant/kucoin-cli>`_
+  
+* Highly configurable data acquisitions endpoints
+  * Spend less time cleaning and managing data
+  * Checkout `.ohlcv`, `.orderbook`, `.symbols`, and `.all_tickers`
+  
+* Access to 99%+ of KuCoin REST and Websocket endpoints
+* Seamless order management between Spot and Margin markets
 
 Quickstart
 ++++++++++
@@ -74,35 +76,43 @@ Quickstart
 
   client = Client(api_key, api_secret, api_passphrase)
 
-  # Get recent margin dataflow for Bitcoin
-  margin_df = client.get_margin_data("BTC")
+  # Pull details for all marginable currencies quoted in BTC terms
+  marginable_btc_curr = client.symbols(quote="BTC", marginable=True)
 
   # Pull buy/sell orders for BTC-USDT
   order_df = client.get_order_histories("BTC-USDT")
 
   # Query one month of minutely data for BTC-USDT and ETH-USDT
-  ohlvc_df = client.get_kline_history(
+  ohlvc_df = client.ohlcv(
       tickers=["BTC-USDT", "ETH-USDT"],
       begin="2022-01-01",
       end="2022-02-01",
       interval="1min",
   )
 
-  # Place a margin limit order to sell 1 BTC good for 10 minutes
-  order = client.margin_limit_order(
+  # Buy 500 USDT of ETH on the spot market
+  order = client.order(
+      symbol="ETH-USDT",
+      side="buy",
+      price=500,
+  )
+
+  # Place a 10 minute Good-to-Time margin limit sell order for 1 BTC @ 24,000 USDT
+  order = client.order(
       symbol="BTC-USDT",
       side="sell",
       size=1.0000,
       tif="GTT",
       cancel_after=600,
+      margin=True,
+      type="limit",
   )
 
-  # Buy 0.015 ETH-USDT at market price
-  order = client.market_order(
-      symbol="ETH-USDT",
-      side="buy",
-      size="0.015",
-  )
+  # Obtain the full orderbook depth for XRP-USDT as a namedtuple containing numpy arrays
+  orderbook = client.orderbook("XRP-USDT", depth="full", format="numpy")
+  # Specify `format="pd"` to obtain an identical result wrapped in a pandas dataframe
+  orderbook = client.orderbook("XRP-USDT", depth="full", format="numpy") 
+
 
 Why `KuCoin <https://www.kucoin.com/>`_? 
 ++++++++++++++++++++++++++++++++++++++++
@@ -111,6 +121,12 @@ Why `KuCoin <https://www.kucoin.com/>`_?
 * High liquidity across coins and a wide offering of shitcoins
 * Frequent additions of speculative coins 
 * Among the least regulated exchanges
+  
+Consider donating:
+++++++++++++++++++
+
+| Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
+| Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
 
 Distributions & Info:
 +++++++++++++++++++++
@@ -118,9 +134,3 @@ Distributions & Info:
 * `Kucoin-Cli on PyPI <https://pypi.org/project/kucoin-cli/>`_
 * `Kucoin-Cli on Github <https://github.com/jaythequant/kucoin-cli>`_
 * `Official Kucoin API Documenation <https://docs.kucoin.com/#general>`_
-
-Consider donating:
-++++++++++++++++++
-
-| Etherium Wallet: 0x109CcCCEc0449E80336039c983e969DD23B9CE3E
-| Bitcoin Wallet: 3L47AT1SoLGs65RFHYBdVmbCdtQNxZFry6
