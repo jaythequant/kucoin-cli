@@ -41,7 +41,6 @@ napoleon_use_ivar = True
 
 source_suffix = {
     '.rst': 'restructuredtext',
-    '.txt': 'markdown',
     '.md': 'markdown',
 }
 

@@ -350,18 +350,18 @@ class Client(BaseClient):
         resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
-    def repay_all(self, currency:str, size:float, priority:str="highest") -> dict:
+    def repay_all(self, currency:str, size:float=None, priority:str="highest") -> dict:
         """Function for repaying all outstanding margin debt against specified currency. 
 
         Parameters
         ----------
         currency : str 
             Specific currency to repay liabilities against (e.g., BTC).
-        size : float 
+        size : float, optional
             Total currency sum to repay. Must be a multiple of currency max
             precision.
-        priority : str 
-            (Optional) Specify how to prioritize debt repayment.
+        priority : str, optional
+            Specify how to prioritize debt repayment.
             - Highest: Repay highest interest rate loans first
             - Soonest: Repay nearest term loans first 
 
@@ -372,8 +372,10 @@ class Client(BaseClient):
         """
         path = "margin/repay/all"
         data = {
-            "currency": currency,
+            "currency": currency.upper(),
         }
+        if not size:
+            size = self.margin_account(asset=currency).availableBalance
         if priority == "highest":
             data["sequence"] = "HIGHEST_RATE_FIRST"
         if priority == "soonest":
