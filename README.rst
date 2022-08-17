@@ -69,7 +69,7 @@ Quickstart
 
 .. code-block:: python
 
-  import kucoincli.client as Client
+  from kucoincli.client import Client
 
   # Your own credentials here
   api_key = 'api_key' 
