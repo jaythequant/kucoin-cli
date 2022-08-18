@@ -350,45 +350,6 @@ class Client(BaseClient):
         resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
-    def repay_all(self, currency:str, size:float=None, priority:str="highest") -> dict:
-        """Function for repaying all outstanding margin debt against specified currency. 
-
-        Parameters
-        ----------
-        currency : str 
-            Specific currency to repay liabilities against (e.g., BTC).
-        size : float, optional
-            Total currency sum to repay. Must be a multiple of currency max
-            precision.
-        priority : str, optional
-            Specify how to prioritize debt repayment.
-            - Highest: Repay highest interest rate loans first
-            - Soonest: Repay nearest term loans first 
-
-        Returns
-        -------
-        dict
-            Returns JSON dictionary with repayment confirmation and details.
-        """
-        path = "margin/repay/all"
-        data = {
-            "currency": currency.upper(),
-        }
-        if not size:
-            size = self.margin_account(asset=currency).availableBalance
-        if priority == "highest":
-            data["sequence"] = "HIGHEST_RATE_FIRST"
-        if priority == "soonest":
-            data["sequence"] = "RECENTLY_EXPIRE_FIRST"
-        if size: 
-            data["size"] = size
-        url = self._request(
-            "post", path, signed=True, data=data
-        )
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        return resp.json()
-
     def margin_balance(self, currency:str=None) -> dict:
         """Query all outstanding margin balances.
         
@@ -760,30 +721,51 @@ class Client(BaseClient):
         return resp.json()["data"]
 
     def margin_account(
-        self, asset:None or str or list=None, balance:None or float=None,
+        self, asset:None or str or list=None, balance:None or float=None, 
+        mode:str="cross",
     ) -> pd.DataFrame or pd.Series:
         """Return cross margin account details
 
         Parameters
         ----------
         asset : None or str or list, optional
-            Specify a currency or list of currencies and return only 
-            margin account balance information for those assets.
+            Specify a currency or list of currencies and return only margin account
+            balance information for those assets. Note that cross margin and isolated 
+            margin require different assets specifications. Cross margin use currency
+            (e.g. BTC) while for isolated margin use trading pair (e.g. BTC-USDT)
         balance : None or float, optional
             Control minimum balance required to include asset in return
-            values.
+            values. Cannot be used with isolated margin as of yet.
+        mode : str, optional
+            Toggle between isolated and cross margin mode by setting `mode="cross"` 
+            [DEFAULT] or `mode="isolated"`
         
         Returns
         -------
-        pd.DataFrame or pd.Series
-            Returns a DataFrame containing margin account balance
-            details for all available marginable assets
+        DataFrame or Series
+            Returns a DataFrame or Series containing margin account balance
+            details for all available marginable assets in the user's cross or
+            isolated margin accounts.
         """
-        path = "margin/account"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        df = pd.DataFrame(resp.json()["data"]["accounts"]).set_index("currency")
-        df = df.astype(float)
+        if mode == "cross":
+            path = "margin/account"
+            url = self._request("get", path, signed=True)
+            resp = self.session.request("get", url)
+            df = pd.DataFrame(resp.json()["data"]["accounts"]).set_index("currency")
+            df = df.astype(float)
+            df.sort_values("totalBalance", inplace=True)
+        if mode == "isolated":
+            path = "isolated/accounts"
+            url = self._request("get", path, signed=True)
+            resp = self.session.request("get", url)
+            resp = resp.json()
+            df = pd.DataFrame(resp["data"]["assets"]).set_index("symbol")
+            base = pd.DataFrame(df["baseAsset"].to_dict()).T
+            quote = pd.DataFrame(df["quoteAsset"].to_dict()).T
+            df = pd.concat(
+                [df.iloc[:, 0:2], base, quote], axis=1, keys=["Pair", "Base", "Quote"]
+            )
+            df.sort_values(by=[("Pair", "debtRatio")], ascending=False)
         if asset:
             if isinstance(asset, str):
                 asset = [asset]
@@ -793,11 +775,14 @@ class Client(BaseClient):
             except KeyError:
                 raise KeyError("Asset not found in marginable index")
         if balance is not None:
-            df = df[df["totalBalance"] > 0]
-            if df.empty:
-                raise KeyError(
-                f"No accounts with balance greater than {balance}"
-            )
+            if mode == "cross":
+                df = df[df["totalBalance"] > balance]
+                if df.empty:
+                    raise KeyError(
+                    f"No accounts with balance greater than {balance}"
+                )
+            else:
+                warnings.warn("Isolated margin cannot be filtered by `balance` yet.")
         return df.squeeze()
 
     def get_stats(self, pair:str) -> pd.Series:
@@ -1318,3 +1303,360 @@ class Client(BaseClient):
             raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         resp = resp.json()
         return float(resp["data"]["debtRatio"])
+
+    def repay(
+        self, currency:str, size:float=None, id=None, symbol:str=None, 
+        priority:str="highest", mode="cross",
+    ) -> dict:
+        """Function for repaying all outstanding margin debt against specified currency. 
+
+        Parameters
+        ----------
+        currency : str 
+            Specific currency to repay liabilities against (e.g., BTC).
+        size : float, optional
+            Total currency sum to repay. Must be a multiple of currency max
+            precision.
+        id : str or None, optional
+            Repay by specific order ID. If no ID is provided, repayment will occur
+            across all borrowings for that currency in `priority` order.
+        priority : str, optional
+            Specify how to prioritize debt repayment.
+            - Highest: Repay highest interest rate loans first
+            - Soonest: Repay nearest term loans first 
+
+        Returns
+        -------
+        dict
+            Returns JSON dictionary with repayment confirmation and details.
+        """
+        if mode == "cross":
+            margin_mode = "margin"
+            data = {
+                "currency": currency.upper(),
+                "size": size if size else self.margin_account(currency).availableBalance,
+            }
+        if mode =="isolated":
+            if not size:
+                df = self.margin_account(mode="isolated").loc[symbol]
+                if currency == df[("Quote", "currency")]:
+                    size = df[("Quote", "totalBalance")]
+                else:
+                    size == df[("Base", "totalBalance")]
+            if not symbol:
+                raise ValueError("Isolated margin requires both `currency` and `symbol`")
+            margin_mode = mode
+            data = {
+                "symbol": symbol.upper(),
+                "currency": currency.upper(),
+                "size": float(size),
+            }
+        if id:
+            path = f"{margin_mode}/repay/single"
+            if mode == "cross":
+                data["tradeId"] = str(id)
+            if mode == "isolated":
+                data["loanId"] = str(id)
+        if not id:
+            path = f"{margin_mode}/repay/all"
+            if priority == "highest":
+                if mode == "cross":
+                    data["sequence"] = "HIGHEST_RATE_FIRST"
+                else:
+                    data["seqStrategy"] = "HIGHEST_RATE_FIRST"
+            if priority == "soonest":
+                if mode == "cross":
+                    data["sequence"] = "RECENTLY_EXPIRE_FIRST"
+                else:
+                    data["seqStrategy"] = "RECENTLY_EXPIRE_FIRST"
+        url = self._request("post", path, signed=True, data=data)
+        data_json = self._compact_json_dict(data)
+        resp = self.session.request("post", url, data=data_json)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        return resp.json()
+
+    def get_margin_history(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Obtain record and detail of repaid margin debts"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50
+        path = f"margin/borrow/repaid?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/borrow/repaid?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs)
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["repayTime"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["repayTime"]
+        return res.squeeze()
+
+    def get_outstanding_margin(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Obtain record and detail of outstanding margin debts"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50
+        path = f"margin/borrow/outstanding?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/borrow/outstanding?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["createdAt"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["createdAt"]
+        return res
+    
+    def get_outstanding_loans(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Obtain record of outstanding loans"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50
+        path = f"margin/lend/active?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/lend/active?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["createdAt"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["createdAt"]
+        return res
+
+    def get_lending_history(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Get historic details for cancelled or fully filled lend orders"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50   
+        path = f"margin/lend/done?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/lend/done?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["createdAt"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["createdAt"]
+        return res
+
+    def get_active_loans(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Access order which are fully filled and oustanding"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50  
+        path = f"margin/lend/trade/unsettled?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/lend/trade/unsettled?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["maturityTime"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["maturityTime"]
+        return res
+
+    def get_settled_loans(
+        self, currency:str or list=None, page:int=None, pagesize:int=50
+    ) -> pd.DataFrame or pd.Series:
+        """Access order which are fully filled and oustanding"""
+        if pagesize > 50:
+            raise ValueError("Maximum `pagesize` is 50")
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+            pagesize = 50  
+        path = f"margin/lend/trade/settled?currentPage={page}&pageSize={pagesize}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        dfs = []
+        resp = resp.json()
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"margin/lend/trade/settled?currentPage={page}&pageSize=50"
+                url = self._request("get", path, signed=True)
+                resp = self.session.request("get", url)
+                if resp.status_code != 200:
+                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        if not res.empty:
+            if currency:
+                currency = [currency] if isinstance(currency, str) else currency
+                res = res[res["currency"].isin(currency)]
+            fmt = "%Y-%m-%d %H:%M:%S"
+            res.index = pd.to_datetime(res["settledAt"], unit="ms")
+            res.index = pd.to_datetime(res.index.strftime(fmt))
+            del res["settledAt"]
+        return res
+    
+    def server_status(self) -> dict:
+        """Get KuCoin service stats (open, closed, cancelonly)"""
+        path = "status"
+        url = self._request("get", path)
+        resp = self.session.request("get", url)
+        return resp.json()["data"]
+
+    def lend(self, currency:str, size:float, interest:float, term:int):
+        """Post lend order to KuCoin lending markets"""
+        data = {"currency": currency, "size": size, "dailyIntRate": interest, "term": term}
+        path = "margin/lend"
+        url = self._request("post", path, data=data, signed=True)
+        resp = self.session.request("post", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        return resp.json()
+
+    def get_borrow_order(self, id):
+        """Get borrow order details for specific order ID"""
+        path = f"margin/borrow?orderId={id}"
+        url = self._request("get", path, signed=True)
+        resp = self.session.request("get", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        return resp.json()
+
+    def borrow(
+        self, currency:str, size:float, maxrate:float=None, 
+        type:str="FOK", term:int or list or None=None,
+    ) -> dict:
+        """Post borrow request to KuCoin lending markets"""
+        data = {"currency": currency, "type": type, "size": size}
+        if maxrate:
+            data["maxRate"] = maxrate
+        if term:
+            term = [term] if isinstance(term, int) else term
+            term = [str(period) for period in term]
+            data["term"] = ",".join(term)
+        path = "margin/borrow"
+        url = self._request("post", path, data=data, signed=True)
+        resp = self.session.request("post", url)
+        if resp.status_code != 200:
+            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        return resp.json()
