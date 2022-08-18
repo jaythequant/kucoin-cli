@@ -85,7 +85,7 @@ Quickstart
   order_df = client.get_order_histories("BTC-USDT")
 
   # Query one month of minutely data for BTC-USDT and ETH-USDT
-  ohlvc_df = client.ohlcv(
+  ohlcv_df = client.ohlcv(
       tickers=["BTC-USDT", "ETH-USDT"],
       begin="2022-01-01",
       end="2022-02-01",
@@ -120,7 +120,7 @@ Quickstart
 
 Why `KuCoin <https://www.kucoin.com/>`_? 
 ++++++++++++++++++++++++++++++++++++++++
-* **For U.S. based customer, KuCoin is one of the few non-KYC exchanges**
+* **For U.S. based customers, KuCoin is one of the few non-KYC exchanges**
 * Industry low transactions fees 
 * High liquidity across coins and a wide offering of alts
 * Frequent new coin listings
