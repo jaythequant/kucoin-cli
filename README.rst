@@ -17,12 +17,12 @@ A data science focused Python API implementation
 Why use this library over `python-kucoin <https://github.com/sammchardy/python-kucoin>`_ or the `official SDK <https://github.com/Kucoin/kucoin-python-sdk>`_?
 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
 
-This package was written by a data analyst for data analysts. Specifically designed for fast, efficient data acquisition and high complexity 
-trades such as HFT, market-making, and long-short strategies. Wherever possible, endpoints have been neatly wrapped to pandas Dataframes, key data 
-acquisition enpoints have been thoughtfully constructed to have rich configurability reducing time needed to clean and filter data. Trading functions are
-explicitly geared towards simplicity with seamless margin integration. Of special note, OHLCV acquisition from the KuCoin REST API is a has been overhauled
-to enable to user to query a list of assets over any time period rather than the standard single asset with a limit of 1500 bars of historic data. For large scale
-ML projects, leverage the ``kucoincli.pipe`` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database structures.
+This package was written with an eye towards data science and quantitative trading strategies. Specifically designed for fast, efficient data acquisition and high complexity 
+trades such as HFT, market-making, and long-short strategies. Wherever possible, endpoints have been neatly wrapped to pandas DataFrames with key data 
+acquisition enpoints thoughtfully constructed with rich configurability reducing time needed to clean and filter data. Trading functions are
+explicitly geared towards simplicity with seamless margin trade integration. Of special note, OHLCV acquisition from the KuCoin REST API has been overhauled
+to enable to user to query a multiple assets over any extended time period rather than the standard enpoints limit of a single asset with a max 1500 bars of historic data. For large scale
+ML projects, leverage the ``kucoincli.pipe`` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database solution.
 
 * Automate the generation of a enormous SQL databases with ``kucoincli.pipe``
 * Take complex trading algorithms live via websockets using ``kucoincli.socket`` [work in progress]
