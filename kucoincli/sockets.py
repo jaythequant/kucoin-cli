@@ -1,7 +1,7 @@
 import time
 import json
 from pprint import pprint
-from utils._utils import _str_to_list
+from kucoincli.utils._utils import _str_to_list
 
 
 class Socket(object):

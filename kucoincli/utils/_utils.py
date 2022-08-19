@@ -67,7 +67,7 @@ def _parse_interval(begin, end, interval) -> list:
         return call_ranges
 
 
-def _str_to_list(self, lst:list) -> list:
+def _str_to_list(lst:list) -> list:
     """Convert any string type variables to list type"""
     l = []
     for var in lst:

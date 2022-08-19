@@ -1288,7 +1288,6 @@ class Client(BaseClient):
             data["remark"] = remark
         if stp:
             data["stp"] = stp
-
         url = self._request("post", path, signed=True, data=data)
         data_json = self._compact_json_dict(data)
         resp = self.session.request("post", url, data=data_json)
@@ -1628,7 +1627,8 @@ class Client(BaseClient):
         data = {"currency": currency, "size": size, "dailyIntRate": interest, "term": term}
         path = "margin/lend"
         url = self._request("post", path, data=data, signed=True)
-        resp = self.session.request("post", url)
+        data_json = self._compact_json_dict(data)
+        resp = self.session.request("post", url, data=data_json)
         if resp.status_code != 200:
             raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         return resp.json()
@@ -1656,7 +1656,8 @@ class Client(BaseClient):
             data["term"] = ",".join(term)
         path = "margin/borrow"
         url = self._request("post", path, data=data, signed=True)
-        resp = self.session.request("post", url)
+        data_json = self._compact_json_dict(data)
+        resp = self.session.request("post", url, data=data_json)
         if resp.status_code != 200:
             raise KucoinResponseError(f"Error response: <{resp.status_code}>")
         return resp.json()
