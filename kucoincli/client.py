@@ -87,7 +87,7 @@ class BaseClient(Socket):
                 self.RETRIES += 1
             if self.RETRIES == self.MAX_RECURSION:
                 self.RETRIES = 1
-                return KucoinResponseError("Max recursion depth exceeded. Server response not received")
+                raise KucoinResponseError("Max recursion depth exceeded. Server response not received")
         elif response.status_code == 401:
             logging.info(response.json())
             raise KucoinResponseError("Invalid API Credentials")
