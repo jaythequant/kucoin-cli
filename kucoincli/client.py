@@ -23,6 +23,9 @@ class BaseClient(Socket):
     API_VERSION = "v1"
     API_VERSION2 = "v2"
     API_VERSION3 = "v3"
+    BACKOFF = 3
+    RETRIES = 1
+    MAX_RECURSION = 6
 
     def __init__(self, api_key=None, api_secret=None, api_passphrase=None, sandbox=False):
 
@@ -66,7 +69,35 @@ class BaseClient(Socket):
             headers = self._generate_signature(method, full_path, data)
             self.session.headers.update(headers)
 
-        return uri
+        if signed and method != "get" and data:
+            payload = self._compact_json_dict(data)
+        else:
+            payload = None
+
+        response = self.session.request(method, uri, data=payload)
+
+        if response.status_code == 200:
+            pass
+        elif response.status_code == 429:
+            # Exponential backoff to handle server timeouts
+            logging.debug(f"Server timeout hit. Timeout for {self.BACKOFF ** self.RETRIES} seconds.")
+            time.sleep(self.BACKOFF ** self.RETRIES)
+            self.session.request(method, uri, data=payload)
+            if self.RETRIES < self.MAX_RECURSION:
+                self.RETRIES += 1
+            if self.RETRIES == self.MAX_RECURSION:
+                self.RETRIES = 1
+                return KucoinResponseError("Max recursion depth exceeded. Server response not received")
+        elif response.status_code == 401:
+            logging.info(response.json())
+            raise KucoinResponseError("Invalid API Credentials")
+        else:
+            logging.info(response.json())
+            raise KucoinResponseError(f"Response Error Code: <{response.status_code}>")
+
+        self.RETRIES = 1
+        return response.json()
+
 
     def _get_params_for_sig(data):
         """Construct params for trade authentication signature"""
@@ -177,9 +208,8 @@ class Client(BaseClient):
     def subusers(self) -> pd.DataFrame:
         """Obtain a list of sub-users"""
         path = "sub/user"
-        url = self._request("get", path, signed=True)
-        response = self.session.request("get", url)
-        df = pd.DataFrame(response.json()["data"])
+        resp = self._request("get", path, signed=True)
+        df = pd.DataFrame(resp["data"])
         if df.empty:
             raise KucoinResponseError("No sub-users found")
         return df
@@ -210,17 +240,15 @@ class Client(BaseClient):
         path = "accounts"
         if id:
             path = path + f"/{id}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code == 401:
-            raise KucoinResponseError(f"[{resp.status_code}] Invalid API credentials")
+        resp = self._request("get", path, signed=True)
+        # resp = self.session.request("get", url)
         try:
             if id:
-                df = pd.Series(resp.json()["data"])
+                df = pd.Series(resp["data"])
             else:
-                df = pd.DataFrame(resp.json()["data"])
+                df = pd.DataFrame(resp["data"])
         except:
-            raise Exception(resp.json()) # Handle no data keyerror
+            raise Exception(resp) # Handle no data keyerror
         df[["balance", "available", "holds"]] = df[["balance", "available", "holds"]].astype(float)
         if type: 
             df = df[df["type"] == type]
@@ -251,9 +279,7 @@ class Client(BaseClient):
         """
         data = {"type": type, "currency": currency}
         path = "accounts"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
+        resp = self._request("post", path, signed=True, data=data)
         return resp.json()
 
     def get_subaccounts(self, id:str or None=None) -> dict:
@@ -298,9 +324,8 @@ class Client(BaseClient):
         path = f"limit/orders?currentPage={page}&pageSize={pagesize}"
         if id:
             path = f"orders/{id}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
+        resp = self._request("get", path, signed=True)
+        resp = resp["data"]
         if not resp:
             raise KucoinResponseError("No orders in the last 24 hours or order ID not found.")
         if id:
@@ -343,11 +368,9 @@ class Client(BaseClient):
             data["clientOid"] = oid
         else:
             data["clientOid"] = str(int(time.time() * 10000))
-        url = self._request(
+        resp = self._request(
             "post", path, signed=True, api_version=self.API_VERSION2, data=data
         )
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
         return resp.json()
 
     def margin_balance(self, currency:str=None) -> dict:
@@ -367,14 +390,13 @@ class Client(BaseClient):
         path = "margin/borrow/outstanding"
         if currency:
             path = f"{path}?={currency}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        return resp.json()["data"]
+        resp = self._request("get", path, signed=True)
+        return resp["data"]
 
     def ohlcv(
         self, tickers:str or list, begin:dt.datetime or str, 
         end:None or dt.datetime or str=None, interval:str="1day", 
-        warning:bool=True, ascending=True,
+        ascending:bool=True, warning:bool=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -395,14 +417,15 @@ class Client(BaseClient):
             (Optional) Ending date for queried date range. This parameter has the same
             formatting rules and flexibility of param `begin`. If left unspecified, end 
             will default to the current UTC date and time stamp.
-        interval : str
-            Interval at which to return OHLCV data. Interval options: `["1min", 
+        interval : str, optional
+            Interval at which to return OHLCV data. Intervals: `["1min", 
             "3min", "15min", "30min", "1hour", "2hour", "4hour", "6hour", "8hour", 
-            "12hour", "1day", "1week"]`. Default interval `1day`.
-        progress_bar : bool 
-            Flag to enable progress bar. Does not work in Jupyter notebooks yet
-        msg : bool 
-            Flag for turning on and off helper messages
+            "12hour", "1day", "1week"]`. Default=1day
+        ascending : bool, optional
+            If `ascending=True`, dataframe will be returned in standard order. If `False`,
+            return data in reverse chronological.
+        warning : bool, optiona
+            Toggle whether function warns user about excessive API calls
 
         Returns
         -------
@@ -438,7 +461,7 @@ class Client(BaseClient):
             if num_calls > 20:
                 warnings.warn(f"""
                 Endpoint will be queried {num_calls} times.
-                    Server may require one or multiple timeouts. Set msg to true for timeout notices
+                    Server may require one or multiple timeouts
                 """)
 
         for ticker in tickers:
@@ -450,39 +473,22 @@ class Client(BaseClient):
             df_pages = []   # List for individual df returns from paganated values
 
             for path in paths:
-                url = self._request("get", path)
                 try:
-                    resp = self.session.request("get", url)
-                    # Handle timeout response by sleeping function
-                    if resp.status_code == 200:
-                        pass
-                    elif resp.status_code == 429:
-                        logging.debug("Server requires 10 second timeout")
-                        time.sleep(11)
-                        logging.debug("Re-establishing stream . . . ")
-                        resp = self.session.request("get", url)
-                        if resp.status_code == 429:
-                            logging.debug("Server requires hard timeout: 3 minute delay.")
-                            time.sleep(180)
-                            logging.debug("Re-establishing stream . . . ")
-                            resp = self.session.request("get", url)
-                    else:
-                       raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+                    resp = self._request("get", path)
                 except requests.exceptions.ConnectionError as e:
-                    logging.info("ConnectionError raised. 10 minute timeout.")
+                    logging.info("ConnectionError raised. 5 minute timeout.")
                     logging.debug(e, exc_info=True)
                     self.session.close()
-                    time.sleep(600) # Ten minute time out
+                    time.sleep(300) # Ten minute time out
                     self.session = self._session()
-                    resp = self.session.request("get", url)
+                    resp = self.session._request("get", path)
                 except requests.exceptions.ReadTimeout as e:
                     logging.info("Request.exceptions.ReadTimeout. 5 minute timeout")
                     logging.debug(e, exc_info=True)
                     self.session.close()
                     time.sleep(300) # Ten minute time out
                     self.session = self._session()
-                    resp = self.session.request("get", url)
-                resp = resp.json()
+                    resp = self.session._request("get", path)
                 try:
                     df = pd.DataFrame(resp["data"])
                     df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
@@ -560,11 +566,7 @@ class Client(BaseClient):
         * `.get_marginable_details`
         """
         path = "symbols"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()
+        resp = self._request("get", path)
         df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
             try:
@@ -604,12 +606,8 @@ class Client(BaseClient):
             pandas DataFrame containing most recent 300 lending/borrowing rate details
         """
         path = f"margin/trade/last?currency={currency.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()["data"]
-        df = pd.DataFrame(resp)
+        resp = self._request("get", path)
+        df = pd.DataFrame(resp["data"])
         if df.empty:
             raise KucoinResponseError("No data returned.")
         df["timestamp"] = pd.to_datetime(df["timestamp"], origin="unix")
@@ -636,14 +634,10 @@ class Client(BaseClient):
         path = f"margin/market?currency={currency.upper()}"
         if term:
             path = path + f"&term={term}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()["data"]
+        resp = self._request("get", path)
         if df.empty:
             KucoinResponseError("No results for currency and term combination")
-        df = pd.DataFrame(resp)
+        df = pd.DataFrame(resp["data"])
         return df
 
     def get_marginable_pairs(self, base:None or str or list=None) -> pd.DataFrame:
@@ -667,11 +661,7 @@ class Client(BaseClient):
                 base = [base]
             base = [ticker.upper() for ticker in base]
         path = "symbols"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(resp.status_code)
-        resp = resp.json()
+        resp = self._request("get", path)
         df = pd.DataFrame(resp["data"])
         marginTrue = df["isMarginEnabled"] == True
         tradingEnabled = df["enableTrading"] == True
@@ -694,11 +684,7 @@ class Client(BaseClient):
             Returns pandas Dataframe with filled trade details keyed to timestamp
         """
         path = f"market/histories?symbol={pair.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()
+        resp = self._request("get", path)
         try:
             df = pd.DataFrame(resp["data"])
         except KeyError:
@@ -716,9 +702,8 @@ class Client(BaseClient):
             Returns list of all KuCoin markets (i.e., NFT)
         """
         path = "markets"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        return resp.json()["data"]
+        resp = self._request("get", path)
+        return resp["data"]
 
     def margin_account(
         self, asset:None or str or list=None, balance:None or float=None, 
@@ -749,16 +734,13 @@ class Client(BaseClient):
         """
         if mode == "cross":
             path = "margin/account"
-            url = self._request("get", path, signed=True)
-            resp = self.session.request("get", url)
-            df = pd.DataFrame(resp.json()["data"]["accounts"]).set_index("currency")
+            resp = self._request("get", path, signed=True)
+            df = pd.DataFrame(resp["data"]["accounts"]).set_index("currency")
             df = df.astype(float)
             df.sort_values("totalBalance", inplace=True)
         if mode == "isolated":
             path = "isolated/accounts"
-            url = self._request("get", path, signed=True)
-            resp = self.session.request("get", url)
-            resp = resp.json()
+            resp = self._request("get", path, signed=True)
             df = pd.DataFrame(resp["data"]["assets"]).set_index("symbol")
             base = pd.DataFrame(df["baseAsset"].to_dict()).T
             quote = pd.DataFrame(df["quoteAsset"].to_dict()).T
@@ -799,10 +781,8 @@ class Client(BaseClient):
             Returns pandas Series containing details for target currency
         """
         path = f"market/stats?symbol={pair.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
-        return pd.Series(resp)
+        resp = self._request("get", path)
+        return pd.Series(resp["data"])
 
     def get_fee_rate(self, currency:str or list or None=None, type:str="crypto") -> dict:
         """Get the base fee for users in either crypto or fiat terms"""
@@ -818,21 +798,16 @@ class Client(BaseClient):
                 raise ValueError("This endpoint is limited to 10 currencies per call.")
             curr_str = ",".join(currency)
             path = f"trade-fees?symbols={curr_str}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()["data"]
+        resp = self._request("get", path, signed=True)
         if not currency:
             return {f"{type.title()} Base Rate": resp}
-        return resp
+        return resp["data"]
 
     def get_level1_orderbook(self, pair:str, time="utc") -> pd.Series or pd.DataFrame:
         """Obtain best bid-ask spread details for a specified pair"""
         path = f"market/orderbook/level1?symbol={pair.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
+        resp = self._request("get", path)
+        resp = resp["data"]
         if resp is None:
             raise KucoinResponseError("No data returned for pair.")
         ser = pd.Series(resp, name=pair)
@@ -912,24 +887,20 @@ class Client(BaseClient):
             returned in the JSON object. Common cause of 400 response is invalid API 
             credentials
         """
-        if isinstance(depth, str or None):
+        if isinstance(depth, str) or not depth:
             path = f"market/orderbook/level2?symbol={pair.upper()}"
-            url = self._request(
+            resp = self._request(
                 "get", path, api_version=self.API_VERSION3, signed=True
             )
         if isinstance(depth, int):
             if depth <= 100:
                 path = f"market/orderbook/level2_100?symbol={pair.upper()}"
-                url = self._request("get", path)
+                resp = self._request("get", path)
             else:
                 path = f"market/orderbook/level2?symbol={pair.upper()}"
-                url = self._request(
+                resp = self._request(
                     "get", path, api_version=self.API_VERSION3, signed=True
                 )
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()
         # Sometimes the request is valid, but no data is returned. If this is the case then
         # `time` will be 0.
         if resp["data"]["time"] == 0:
@@ -945,11 +916,11 @@ class Client(BaseClient):
             if isinstance(depth, int):
                 bids = pd.DataFrame(bids[:depth, :], columns=["price", "offer"])
                 asks = pd.DataFrame(asks[:depth, :], columns=["price", "offer"])
-            if isinstance(depth, str or None):
+            if isinstance(depth, str) or not depth:
                 bids = pd.DataFrame(bids, columns=["price", "offer"])
                 asks = pd.DataFrame(asks, columns=["price", "offer"])
-            bids["value"] = bids.price.astype(float) * bids.offer.astype(float)
-            asks["value"] = asks.price.astype(float) * asks.offer.astype(float)
+            bids["value"] = bids["price"].astype(float) * bids["offer"].astype(float)
+            asks["value"] = asks["price"].astype(float) * asks["offer"].astype(float)
             df = pd.concat([bids, asks], keys=["Bids", "Asks"], axis=1)
             df.index = df.index + 1
             df = pd.concat({t: df}, names=["time", "depth"]).astype(float)
@@ -987,10 +958,8 @@ class Client(BaseClient):
             if `pair` or `quote` is specified, a subset of the market.
         """
         path = "market/allTickers"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
-        df = pd.DataFrame(resp["ticker"]).drop("symbolName", axis=1)
+        resp = self._request("get", path)
+        df = pd.DataFrame(resp["data"]["ticker"]).drop("symbolName", axis=1)
         df.set_index("symbol", inplace=True)
         if pair:
             pair = [pair] if isinstance(pair, str) else pair
@@ -1024,12 +993,9 @@ class Client(BaseClient):
             path = "currencies"
         else:
             path = f"currencies/{currency.upper()}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path)
         try:
-            resp = resp.json()["data"]
+            resp = resp["data"]
         except KeyError:
             raise KucoinResponseError("No data returned. Is `currency` valid?")
         if isinstance(currency, str):
@@ -1054,10 +1020,8 @@ class Client(BaseClient):
         ### Needs further improvement from display standpoint.
         # Chains column return is a dictionary which is not good.
         path = f"currencies/{currency.upper()}"
-        url = self._request("get", path, api_version=self.API_VERSION2)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
-        df = pd.DataFrame(resp)
+        resp = self._request("get", path, api_version=self.API_VERSION2)
+        df = pd.DataFrame(resp["data"])
         return df
 
     def get_fiat_prices(self, fiat:str="USD", currency=None) -> pd.Series:
@@ -1086,17 +1050,14 @@ class Client(BaseClient):
             path = f"prices?base={fiat}&currencies={currency}"
         else: 
             path = f"prices?base={fiat}"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        resp = resp.json()["data"]
-        return pd.Series(resp, name=f"{fiat} Denominated")
+        resp = self._request("get", path)
+        return pd.Series(resp["data"], name=f"{fiat} Denominated")
 
     def margin_config(self) -> dict:
         """Pull margin configuration as JSON dictionary"""
         path = "margin/config"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        return resp.json()["data"]
+        resp = self._request("get", path)
+        return resp["data"]
 
     def get_socket_detail(self, private:bool=False) -> dict:
         """Get socket details for private or public endpoints"""
@@ -1108,11 +1069,8 @@ class Client(BaseClient):
         if private:
             path = "bullet-private"
             is_signed = True
-            url = self._request("post", path, signed=is_signed)
-            resp = self.session.request("post", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        return resp.json()["data"]
+            resp = self._request("post", path, signed=is_signed)
+        return resp["data"]
 
     def get_server_time(self, format:str="unix") -> int:
         """Return server time in UTC time to millisecond granularity
@@ -1137,11 +1095,8 @@ class Client(BaseClient):
             Returns time to the millisecond either as a UNIX epoch or datetime object
         """
         path = "timestamp"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()["data"]
+        resp = self._request("get", path)
+        resp = resp["data"]
         if format == "datetime":
             resp = dt.datetime.utcfromtimestamp(
                 int(resp) / 1000
@@ -1288,19 +1243,13 @@ class Client(BaseClient):
             data["remark"] = remark
         if stp:
             data["stp"] = stp
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        return resp.json()
+        resp = self._request("post", path, signed=True, data=data)
+        return resp
 
     def debtratio(self) -> float:
         """Pull current cross margin debt ratio as float value"""
         path = "margin/account"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        resp = resp.json()
+        resp = self._request("get", path, signed=True)
         return float(resp["data"]["debtRatio"])
 
     def repay(
@@ -1368,12 +1317,8 @@ class Client(BaseClient):
                     data["sequence"] = "RECENTLY_EXPIRE_FIRST"
                 else:
                     data["seqStrategy"] = "RECENTLY_EXPIRE_FIRST"
-        url = self._request("post", path, signed=True, data=data)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        return resp.json()
+        resp = self._request("post", path, signed=True, data=data)
+        return resp
 
     def get_margin_history(
         self, currency:str or list=None, page:int=None, pagesize:int=50
@@ -1387,23 +1332,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50
         path = f"margin/borrow/repaid?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/borrow/repaid?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs)
         if not res.empty:
             if currency:
@@ -1427,23 +1365,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50
         path = f"margin/borrow/outstanding?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/borrow/outstanding?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs).squeeze()
         if not res.empty:
             if currency:
@@ -1467,23 +1398,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50
         path = f"margin/lend/active?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/lend/active?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs).squeeze()
         if not res.empty:
             if currency:
@@ -1507,23 +1431,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50   
         path = f"margin/lend/done?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/lend/done?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs).squeeze()
         if not res.empty:
             if currency:
@@ -1547,23 +1464,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50  
         path = f"margin/lend/trade/unsettled?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/lend/trade/unsettled?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs).squeeze()
         if not res.empty:
             if currency:
@@ -1587,23 +1497,16 @@ class Client(BaseClient):
             page = 1
             pagesize = 50  
         path = f"margin/lend/trade/settled?currentPage={page}&pageSize={pagesize}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
+        resp = self._request("get", path, signed=True)
         dfs = []
-        resp = resp.json()
         df = pd.DataFrame(resp["data"]["items"])
         dfs.append(df)
         if concat_paginated == True:
             diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
             for page in range(2, diff+2):
                 path = f"margin/lend/trade/settled?currentPage={page}&pageSize=50"
-                url = self._request("get", path, signed=True)
-                resp = self.session.request("get", url)
-                if resp.status_code != 200:
-                    raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-                dfs.append(pd.DataFrame(resp.json()["data"]["items"]))
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
         res = pd.concat(dfs).squeeze()
         if not res.empty:
             if currency:
@@ -1618,29 +1521,21 @@ class Client(BaseClient):
     def server_status(self) -> dict:
         """Get KuCoin service stats (open, closed, cancelonly)"""
         path = "status"
-        url = self._request("get", path)
-        resp = self.session.request("get", url)
-        return resp.json()["data"]
+        resp = self._request("get", path)
+        return resp["data"]
 
     def lend(self, currency:str, size:float, interest:float, term:int):
         """Post lend order to KuCoin lending markets"""
         data = {"currency": currency, "size": size, "dailyIntRate": interest, "term": term}
         path = "margin/lend"
-        url = self._request("post", path, data=data, signed=True)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        return resp.json()
+        resp = self._request("post", path, data=data, signed=True)
+        return resp
 
     def get_borrow_order(self, id):
         """Get borrow order details for specific order ID"""
         path = f"margin/borrow?orderId={id}"
-        url = self._request("get", path, signed=True)
-        resp = self.session.request("get", url)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        return resp.json()
+        resp = self._request("get", path, signed=True)
+        return resp
 
     def borrow(
         self, currency:str, size:float, maxrate:float=None, 
@@ -1655,9 +1550,5 @@ class Client(BaseClient):
             term = [str(period) for period in term]
             data["term"] = ",".join(term)
         path = "margin/borrow"
-        url = self._request("post", path, data=data, signed=True)
-        data_json = self._compact_json_dict(data)
-        resp = self.session.request("post", url, data=data_json)
-        if resp.status_code != 200:
-            raise KucoinResponseError(f"Error response: <{resp.status_code}>")
-        return resp.json()
+        resp = self._request("post", path, data=data, signed=True)
+        return resp
