@@ -25,7 +25,7 @@ class BaseClient(Socket):
     API_VERSION3 = "v3"
     BACKOFF = 3
     RETRIES = 1
-    MAX_RECURSION = 6
+    MAX_RECURSION = 7
 
     def __init__(self, api_key=None, api_secret=None, api_passphrase=None, sandbox=False):
 
@@ -74,7 +74,10 @@ class BaseClient(Socket):
         else:
             payload = None
 
-        response = self.session.request(method, uri, data=payload)
+        try:
+            response = self.session.request(method, uri, data=payload)
+        except ConnectionError: # macOS sometimes throws this error if session has idled
+            response = self.session.request(method, uri, data=payload)
 
         if response.status_code == 200:
             pass
