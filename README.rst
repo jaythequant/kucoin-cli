@@ -21,7 +21,7 @@ This package was written with an eye towards data science and quantitative tradi
 trades such as HFT, market-making, and long-short strategies. Wherever possible, endpoints have been neatly wrapped to pandas DataFrames with key data 
 acquisition enpoints thoughtfully constructed with rich configurability reducing time needed to clean and filter data. Trading functions are
 explicitly geared towards simplicity with seamless margin trade integration. Of special note, OHLCV acquisition from the KuCoin REST API has been overhauled
-to enable to user to query multiple assets over extended time periods despite the standard enpoint's limitations of a single asset with a max 1500 bars of historic data. For large scale
+to enable the user to query multiple assets over extended time periods despite the standard enpoint's limitations of a single asset with a max 1500 bars of historic data. For large scale
 ML projects, leverage the ``kucoincli.pipe`` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database solution.
 
 * Automate the generation of a enormous SQL databases with ``kucoincli.pipe``
@@ -47,7 +47,7 @@ Features
   - Capable of handling multi-day data acqusitions sessions through dynamic timeout mechanism
   - Take a look at a pre-built example in the ``examples`` folder available at `my github <https://github.com/jaythequant/kucoin-cli>`_
   
-* Highly configurable data acquisitions endpoints
+* Highly configurable data acquisition endpoints
 
   - Spend less time cleaning and managing data
   - Checkout ``.ohlcv``, ``.orderbook``, ``.symbols``, and ``.all_tickers``
