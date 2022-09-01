@@ -84,13 +84,13 @@ class BaseClient(Socket):
         elif response.status_code == 429:
             # Exponential backoff to handle server timeouts
             logging.debug(f"Server timeout hit. Timeout for {self.BACKOFF ** self.RETRIES} seconds.")
-            time.sleep(self.BACKOFF ** self.RETRIES)
-            self.session.request(method, uri, data=payload)
             if self.RETRIES < self.MAX_RECURSION:
                 self.RETRIES += 1
             if self.RETRIES == self.MAX_RECURSION:
                 self.RETRIES = 1
                 raise KucoinResponseError("Max recursion depth exceeded. Server response not received")
+            time.sleep(self.BACKOFF ** self.RETRIES)
+            self._request(method, path, signed, api_version, data)
         elif response.status_code == 401:
             logging.info(response.json())
             raise KucoinResponseError("Invalid API Credentials")
@@ -298,7 +298,7 @@ class Client(BaseClient):
         return resp
 
     def recent_orders(self, page:int=1, pagesize:int=50, id:str=None) -> pd.DataFrame:
-        """Returns pandas Series with last 24 hours of trades detailed.
+        """Returns DataFrame with details of all trades placed in last 24 hours.
 
         Notes
         -----
@@ -331,9 +331,14 @@ class Client(BaseClient):
         resp = resp["data"]
         if not resp:
             raise KucoinResponseError("No orders in the last 24 hours or order ID not found.")
-        if id:
-            return pd.Series(resp)
-        return pd.DataFrame(resp)
+        if not id:
+            df = pd.DataFrame(resp).squeeze()
+            df["createdAt"] = pd.to_datetime(df["createdAt"], unit="ms")
+            df = df.set_index("createdAt")
+        else:
+            df = pd.Series(resp)
+            df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
+        return df
 
     def transfer(
         self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None
@@ -475,9 +480,40 @@ class Client(BaseClient):
 
             df_pages = []   # List for individual df returns from paganated values
 
+            retries = 0
             for path in paths:
                 try:
                     resp = self._request("get", path)
+                    df = pd.DataFrame(resp["data"])
+                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
+                    df = df.rename(
+                        columns={
+                            0: "time",
+                            1: "open",
+                            2: "close",
+                            3: "high",
+                            4: "low",
+                            5: "volume",
+                            6: "turnover",
+                        }
+                    ).set_index("time")
+                    df_pages.append(df.astype(float))
+                except KeyError:
+                    resp = self._request("get", path)
+                    df = pd.DataFrame(resp["data"])
+                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
+                    df = df.rename(
+                        columns={
+                            0: "time",
+                            1: "open",
+                            2: "close",
+                            3: "high",
+                            4: "low",
+                            5: "volume",
+                            6: "turnover",
+                        }
+                    ).set_index("time")
+                    df_pages.append(df.astype(float))
                 except requests.exceptions.ConnectionError as e:
                     logging.info("ConnectionError raised. 5 minute timeout.")
                     logging.debug(e, exc_info=True)
@@ -492,24 +528,6 @@ class Client(BaseClient):
                     time.sleep(300) # Ten minute time out
                     self.session = self._session()
                     resp = self.session._request("get", path)
-                try:
-                    df = pd.DataFrame(resp["data"])
-                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
-                    df = df.rename(
-                        columns={
-                            0: "time",
-                            1: "open",
-                            2: "close",
-                            3: "high",
-                            4: "low",
-                            5: "volume",
-                            6: "turnover",
-                        }
-                    ).set_index("time")
-                except KeyError:
-                    # This keyerror occurs when GET request returns no data
-                    df = pd.DataFrame()
-                df_pages.append(df.astype(float))
             if len(df_pages) > 1:
                 dfs.append(pd.concat(df_pages, axis=0))
             else:
@@ -673,13 +691,15 @@ class Client(BaseClient):
             df = df[df["quoteCurrency"].isin(base)]
         return df
 
-    def get_trade_history(self, pair:str) -> pd.DataFrame:
+    def get_trade_history(self, pair:str, ascending:bool=False) -> pd.DataFrame:
         """Query API for most recent 100 filled trades for target pair
 
         Parameters
         ----------
         pair : str 
             Target currency pair to query (e.g., BTC-USDT)
+        ascending : bool, optional
+            Control sort order of returned DataFrame (default order Newest -> Oldest)
         
         Returns
         -------
@@ -694,7 +714,7 @@ class Client(BaseClient):
             return KucoinResponseError(f"No trade history received. Is {pair} a valid trading pair?")
         df["time"] = pd.to_datetime(df["time"], origin="unix")
         df.set_index("time", inplace=True)
-        return df
+        return df.sort_index(ascending=ascending)
 
     def get_markets(self) -> list:
         """Returns list of markets on KuCoin
