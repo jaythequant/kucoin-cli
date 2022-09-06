@@ -83,14 +83,17 @@ class BaseClient(Socket):
             pass
         elif response.status_code == 429:
             # Exponential backoff to handle server timeouts
-            logging.debug(f"Server timeout hit. Timeout for {self.BACKOFF ** self.RETRIES} seconds.")
-            if self.RETRIES < self.MAX_RECURSION:
-                self.RETRIES += 1
+            while self.RETRIES < self.MAX_RECURSION:
+                logging.debug(f"Server timeout hit. Timeout for {self.BACKOFF ** self.RETRIES} seconds.")
+                response = self.session.request(method, uri, data=payload)
+                if response.status_code == 200:
+                    break
+                else:
+                    self.RETRIES += 1
+                    time.sleep(self.BACKOFF ** self.RETRIES)
             if self.RETRIES == self.MAX_RECURSION:
-                self.RETRIES = 1
-                raise KucoinResponseError("Max recursion depth exceeded. Server response not received")
-            time.sleep(self.BACKOFF ** self.RETRIES)
-            self._request(method, path, signed, api_version, data)
+                    self.RETRIES = 1
+                    raise KucoinResponseError("Max recursion depth exceeded. Server response not received")
         elif response.status_code == 401:
             logging.info(response.json())
             raise KucoinResponseError("Invalid API Credentials")
@@ -480,11 +483,18 @@ class Client(BaseClient):
 
             df_pages = []   # List for individual df returns from paganated values
 
-            retries = 0
             for path in paths:
                 try:
                     resp = self._request("get", path)
-                    df = pd.DataFrame(resp["data"])
+                    if resp["code"] == '400100': # Handle invalid trading pair response
+                        raise KucoinResponseError(f"Pair not recognized. Is {ticker} a valid trading pair?")
+                    try:
+                        r = resp["data"]
+                    except KeyError:
+                        print(resp)
+                        logging.debug(f"No more data available for {ticker}")
+                        break
+                    df = pd.DataFrame(r)
                     df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
                     df = df.rename(
                         columns={
@@ -498,22 +508,9 @@ class Client(BaseClient):
                         }
                     ).set_index("time")
                     df_pages.append(df.astype(float))
-                except KeyError:
-                    resp = self._request("get", path)
-                    df = pd.DataFrame(resp["data"])
-                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
-                    df = df.rename(
-                        columns={
-                            0: "time",
-                            1: "open",
-                            2: "close",
-                            3: "high",
-                            4: "low",
-                            5: "volume",
-                            6: "turnover",
-                        }
-                    ).set_index("time")
-                    df_pages.append(df.astype(float))
+                except KeyError as e:
+                    logging.debug(f"End of timeseries reached for {ticker}")
+                    break
                 except requests.exceptions.ConnectionError as e:
                     logging.info("ConnectionError raised. 5 minute timeout.")
                     logging.debug(e, exc_info=True)
