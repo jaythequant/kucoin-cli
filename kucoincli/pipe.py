@@ -135,11 +135,11 @@ def pipeline(
             # Start-stop intervals scaled by frequency
             period_start = 0 
             period_stop = loop_increment
-            for i in range(loop_range):                
+            for i in range(loop_range):      
                 now = end - dt.timedelta(minutes=(period_stop * increment_dict[interval]))
                 begin = end - dt.timedelta(minutes=(period_start * increment_dict[interval]))
                 df = client.ohlcv(
-                    ticker, begin=now, end=begin, interval=interval,
+                    ticker, start=now, end=begin, interval=interval,
                 )
                 if df.empty: # If the server gives us no data, break to avoid error
                     logging.debug("Historic data does not reach end date. Moving to next asset.")

@@ -1,6 +1,7 @@
 import datetime as dt
 import timedelta
 import re
+import time
 import math
 
 
@@ -10,7 +11,7 @@ interval_map = {"min": "minutes", "hour": "hours", "day": "days"}
 minutes_map = {"min": 1, "hour": 60, "day": 1440, "week": 10_080}
 
 
-def _parse_date(date_string):
+def _parse_date(date_string, as_unix=False):
     """Parse date string to datetime object"""
     if ":" in date_string:
         dt_obj = dt.datetime.strptime(
@@ -20,6 +21,8 @@ def _parse_date(date_string):
         dt_obj = dt.datetime.strptime(
             date_string, "%Y-%m-%d"
         )
+    if as_unix:
+        dt_obj = int(time.mktime(dt_obj.timetuple()))
     return dt_obj
 
 

@@ -221,7 +221,7 @@ class Client(BaseClient):
         return df
 
     def accounts(
-        self, type:str=None, currency:str=None, balance:float=None, id:str=None,
+        self, currency:str or list=None, type:str or list=None, balance:float=None, id:str=None,
     ) -> pd.DataFrame or pd.Series:
         """Query API for open accounts filterd by type, currency or balance.
 
@@ -256,10 +256,13 @@ class Client(BaseClient):
         except:
             raise Exception(resp) # Handle no data keyerror
         df[["balance", "available", "holds"]] = df[["balance", "available", "holds"]].astype(float)
-        if type: 
-            df = df[df["type"] == type]
+        if type:
+            type = [type] if isinstance(type, str) else type
+            df = df[df["type"].isin(type)]
         if currency:
-            df = df[df["currency"] == currency]
+            currency = [currency] if isinstance(currency, str) else type
+            currency = [curr.upper() for curr in currency]
+            df = df[df["currency"].isin(currency)]
         if balance:
             df = df[df["balance"] >= balance]
         if df.empty:
@@ -405,9 +408,9 @@ class Client(BaseClient):
         return resp["data"]
 
     def ohlcv(
-        self, tickers:str or list, begin:dt.datetime or str, 
+        self, tickers:str or list, start:dt.datetime or str=None,
         end:None or dt.datetime or str=None, interval:str="1day", 
-        ascending:bool=True, warning:bool=True,
+        ascending:bool=True, warning:bool=True, begin:dt.datetime or str=None,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -443,8 +446,19 @@ class Client(BaseClient):
         DataFrame
             Returns pandas Dataframe indexed to datetime
         """
-        if isinstance(begin, str):
-            begin = _parse_date(begin)
+        # This will be removed once begin is deprecated
+        if not start and not begin:
+            raise ValueError("Must specify `start`")
+        if begin:
+            warnings.warn(
+                "Please use keyword `start` instead of `begin`. `begin` will" +
+                "be deprecated in the future."
+            )
+            start = begin
+        ###
+
+        if isinstance(start, str):
+            start = _parse_date(start)
 
         if end:
             if isinstance(end, str):
@@ -456,7 +470,7 @@ class Client(BaseClient):
             tickers = [tickers]
         tickers = [ticker.upper() for ticker in tickers]
 
-        paganated_ranges = _parse_interval(begin, end, interval)
+        paganated_ranges = _parse_interval(start, end, interval)
         unix_ranges = []    # This list will hold paganated unix epochs
 
         # Convert paganated datetime ranges to unix epochs
@@ -477,24 +491,20 @@ class Client(BaseClient):
 
         for ticker in tickers:
             paths = []
-            for begin, end in unix_ranges:
-                path = f"market/candles?type={interval}&symbol={ticker}&startAt={begin}&endAt={end}"
+            for start, end in unix_ranges:
+                path = f"market/candles?type={interval}&symbol={ticker}&startAt={start}&endAt={end}"
                 paths.append(path)
 
             df_pages = []   # List for individual df returns from paganated values
-
             for path in paths:
                 try:
                     resp = self._request("get", path)
                     if resp["code"] == '400100': # Handle invalid trading pair response
                         raise KucoinResponseError(f"Pair not recognized. Is {ticker} a valid trading pair?")
-                    try:
-                        r = resp["data"]
-                    except KeyError:
-                        print(resp)
-                        logging.debug(f"No more data available for {ticker}")
+                    # If we receive a valid response code, but no data, then we have reached the end of the timeseries
+                    if resp["code"] == '200000' and not resp["data"]:
                         break
-                    df = pd.DataFrame(r)
+                    df = pd.DataFrame(resp["data"])
                     df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
                     df = df.rename(
                         columns={
@@ -508,9 +518,9 @@ class Client(BaseClient):
                         }
                     ).set_index("time")
                     df_pages.append(df.astype(float))
-                except KeyError as e:
-                    logging.debug(f"End of timeseries reached for {ticker}")
-                    break
+                # except KeyError as e:
+                #     logging.debug(f"End of timeseries reached for {ticker}")
+                #     break
                 except requests.exceptions.ConnectionError as e:
                     logging.info("ConnectionError raised. 5 minute timeout.")
                     logging.debug(e, exc_info=True)
@@ -528,7 +538,11 @@ class Client(BaseClient):
             if len(df_pages) > 1:
                 dfs.append(pd.concat(df_pages, axis=0))
             else:
-                dfs.append(df_pages[0])
+                try:
+                    dfs.append(df_pages[0])
+                except IndexError:
+                    logging.debug("Valid ticker, but no price data available for this period.")
+                    dfs.append(pd.DataFrame())
         if len(dfs) > 1:
             return pd.concat(dfs, axis=1, keys=tickers).sort_index(ascending=ascending)
         else:
@@ -536,8 +550,8 @@ class Client(BaseClient):
 
     def symbols(
         self, pair:str or list or None=None, market:str or list or None=None, 
-        marginable:str or list or None=None, quote:str or list or None=None,
-        base:str or list or None=None, tradable:str or list or None=None,
+        marginable:bool=None, quote:str or list or None=None,
+        base:str or list or None=None, tradable:bool=None,
     ) -> pd.DataFrame or pd.Series:
         """Highly configurable query for detailed list of currency pairs
 
@@ -585,7 +599,7 @@ class Client(BaseClient):
         """
         path = "symbols"
         resp = self._request("get", path)
-        df = pd.DataFrame(resp["data"]).set_index("symbol")
+        df = pd.DataFrame(resp["data"]).set_index("name")
         if pair:
             try:
                 df = df.loc[pair, :]            
@@ -656,36 +670,6 @@ class Client(BaseClient):
         if df.empty:
             KucoinResponseError("No results for currency and term combination")
         df = pd.DataFrame(resp["data"])
-        return df
-
-    def get_marginable_pairs(self, base:None or str or list=None) -> pd.DataFrame:
-        """Obtain all marginable securities with trade details
-
-        Parameters
-        ----------
-        base : None or str or list, optional
-            Filter results by base currency. Margin only supported currently 
-            for `[BTC, ETH, USDT, USDC]`
-
-        Returns
-        -------
-        pd.DataFrame
-            Return DataFrame object with marginable trading pairs and
-            relevant trade details for each pair.
-        """
-        warnings.warn("This endpoint will be deprecated in the near future. Please use `.symbols`")
-        if base:
-            if isinstance(base, str):
-                base = [base]
-            base = [ticker.upper() for ticker in base]
-        path = "symbols"
-        resp = self._request("get", path)
-        df = pd.DataFrame(resp["data"])
-        marginTrue = df["isMarginEnabled"] == True
-        tradingEnabled = df["enableTrading"] == True
-        df = df[marginTrue & tradingEnabled]
-        if base:
-            df = df[df["quoteCurrency"].isin(base)]
         return df
 
     def get_trade_history(self, pair:str, ascending:bool=False) -> pd.DataFrame:
@@ -1572,3 +1556,124 @@ class Client(BaseClient):
         path = "margin/borrow"
         resp = self._request("post", path, data=data, signed=True)
         return resp
+
+    def cancel_order(self, symbols=None, type='spot', id=None, oid=None):
+        """Cancel all orders or specific order (via OID)
+        
+        symbol : str or list, optional
+        type : str
+            `['trade', 'cross', 'isolated']`
+        id : str or list
+            Unique order ID
+        
+        
+        """
+        if not symbols and not id and not oid:
+            raise ValueError("Must specify one of `symbols`, `id` or `oid`")
+
+        if type == 'cross' or type == 'margin':
+            type = 'MARGIN_TRADE'
+        elif type == 'isolated':
+            type = 'MARGIN_ISOLATED_TRADE'
+        else:
+            type = 'TRADE'
+
+        cancellations = []
+
+        if id:
+            ids = [id] if isinstance(id, str) else id
+            for id in ids:
+                path = f"orders/{oid}"
+                cancellations.append(path)
+        if symbols:
+            symbols = [symbols] if isinstance(symbols, str) else symbols
+            for symbol in symbols:
+                path = f"orders?symbol={symbol}&tradeType={type}"
+                cancellations.append(path)
+        if oid:
+            oids = [oid] if isinstance(oid, str) else oid
+            for oid in oids:
+                path = f"order/client-order/{oid}"
+                cancellations.append(oid)
+
+        responses = []
+        for path in cancellations:
+            resp = self._request("delete", path, signed=True)
+            if resp["code"] == '200000':
+                responses = responses + resp["data"]["cancelledOrderIds"]
+            else:
+                logging.error(
+                    "Order cancellation failure:" +
+                    resp["msg"]
+                )
+
+        return responses
+
+    def list_orders(
+        self, status="done", symbols=None, side=None, type="trade",
+        start=None, stop=None, page=None, id=None, oid=None,
+    ):
+        """Get list of active and done orders"""
+        if type == 'cross' or type == 'margin':
+            type = 'MARGIN_TRADE'
+        elif type == 'isolated':
+            type = 'MARGIN_ISOLATED_TRADE'
+        else:
+            type = 'TRADE'
+
+        if start:
+            if isinstance(start, str):
+                start = _parse_date(start, as_unix=True)
+            if isinstance(start, dt.datetime):
+                start = int(time.mktime(start.timetuple()))
+
+        if stop:
+            if isinstance(stop, str):
+                stop = _parse_date(stop, as_unix=True)
+            if isinstance(stop, dt.datetime):
+                stop = int(time.mktime(stop.timetuple()))
+
+        concat_paginated = False
+        if not page:
+            concat_paginated = True
+            page = 1
+
+        path = f"orders?status={status}&tradeType={type}&currentPage={page}"
+        if start:
+            path += f"&startAt={start*1000}"
+        if stop:
+            path += f"&stopAt={stop*1000}"
+        resp = self._request("get", path, signed=True)
+
+        dfs = []
+        df = pd.DataFrame(resp["data"]["items"])
+        dfs.append(df)
+        if concat_paginated == True:
+            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+            for page in range(2, diff+2):
+                path = f"orders?status={status}&tradeType={type}&currentPage={page}"
+                if start:
+                    path += f"&startAt={start*1000}"
+                if stop:
+                    path += f"&stopAt={stop*1000}"
+                resp = self._request("get", path, signed=True)
+                dfs.append(pd.DataFrame(resp["data"]["items"]))
+        res = pd.concat(dfs).squeeze()
+        
+        res['createdAt'] = pd.to_datetime(res['createdAt'], unit='ms')
+        if isinstance(res, pd.DataFrame):
+            res.set_index('createdAt', inplace=True)
+
+        if symbols:
+            symbols = [symbols] if isinstance(symbols, str) else symbols
+            res = res[res['symbol'].isin(symbols)]
+        if id:
+            id = [id] if isinstance(id, str) else id
+            res = res[res['id'].isin(id)]
+        if oid:
+            oid = [oid] if isinstance(oid, str) else oid
+            res = res[res['clientOid'].isin(oid)]
+        if side:
+            res = res[res['side'] == side]            
+
+        return res
