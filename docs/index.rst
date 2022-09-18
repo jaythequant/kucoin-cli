@@ -10,9 +10,9 @@ Contents
 
    start
    examples
-   constants
    rest
    pipe
+   socket
    endpoints
    changelog
    gendex

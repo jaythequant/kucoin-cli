@@ -387,26 +387,6 @@ class Client(BaseClient):
         )
         return resp.json()
 
-    def margin_balance(self, currency:str=None) -> dict:
-        """Query all outstanding margin balances.
-        
-        Parameters
-        ----------
-        currency : str 
-            (Optional) Query specific currency (e.g., BTC).
-            If no currency is specified, query all currencies.
-        
-        Returns
-        -------
-        dict
-            JSON dictionary with margin balance details.
-        """
-        path = "margin/borrow/outstanding"
-        if currency:
-            path = f"{path}?={currency}"
-        resp = self._request("get", path, signed=True)
-        return resp["data"]
-
     def ohlcv(
         self, tickers:str or list, start:dt.datetime or str=None,
         end:None or dt.datetime or str=None, interval:str="1day", 
@@ -1267,14 +1247,15 @@ class Client(BaseClient):
         currency : str 
             Specific currency to repay liabilities against (e.g., BTC).
         size : float, optional
-            Total currency sum to repay. Must be a multiple of currency max
-            precision.
+            Total sum to repay (in currency terms). Must be a multiple of currency max
+            precision. If `size=None` [defualt], repayment size is max of total margin
+            debt or total available balance.
         id : str or None, optional
-            Repay by specific order ID. If no ID is provided, repayment will occur
-            across all borrowings for that currency in `priority` order.
+            Repay by specific order ID. If `id=None` [default], repayment will occur
+            across all borrowings for `currency` in `priority` order.
         priority : str, optional
             Specify how to prioritize debt repayment.
-            - Highest: Repay highest interest rate loans first
+            - Highest: [default] Repay highest interest rate loans first
             - Soonest: Repay nearest term loans first 
 
         Returns
@@ -1357,18 +1338,34 @@ class Client(BaseClient):
             del res["repayTime"]
         return res.squeeze()
 
-    def get_outstanding_margin(
-        self, currency:str or list=None, page:int=None, pagesize:int=50
-    ) -> pd.DataFrame or pd.Series:
-        """Obtain record and detail of outstanding margin debts"""
-        if pagesize > 50:
-            raise ValueError("Maximum `pagesize` is 50")
+    def margin_balance(
+        self, currency:str or list=None, unix:bool=False, page:int=None
+    ) -> pd.DataFrame:
+        """Query detailed information regarding current margin balances against the user's account.
+        
+        Parameters
+        ----------
+        currency : str or list, optional
+            Query specific currency (e.g., BTC) or list of currencies.
+        unix : bool, optional
+            If `unix=False`, return datetime objects for maturity and created at fields.
+            If `unix=True` return unix epoch as integer to millisecond precision.
+        page : int, optional
+            Response data is paganated. Use `page` to retrieve a single page.
+            If `page=None` [default] then all pages will be retrieved and combined into a 
+            single response.
+        
+        Returns
+        -------
+        DataFrame of Series
+            Return pandas DataFrame with list outstanding margin debts. If only a single debt is 
+            outstanding returns a series. If no debts are outstanding, returns an empty dataframe.
+        """
         concat_paginated = False
         if not page:
             concat_paginated = True
             page = 1
-            pagesize = 50
-        path = f"margin/borrow/outstanding?currentPage={page}&pageSize={pagesize}"
+        path = f"margin/borrow/outstanding?currentPage={page}&pageSize=50"
         resp = self._request("get", path, signed=True)
         dfs = []
         df = pd.DataFrame(resp["data"]["items"])
@@ -1379,16 +1376,16 @@ class Client(BaseClient):
                 path = f"margin/borrow/outstanding?currentPage={page}&pageSize=50"
                 resp = self._request("get", path, signed=True)
                 dfs.append(pd.DataFrame(resp["data"]["items"]))
-        res = pd.concat(dfs).squeeze()
-        if not res.empty:
-            if currency:
-                currency = [currency] if isinstance(currency, str) else currency
-                res = res[res["currency"].isin(currency)]
-            fmt = "%Y-%m-%d %H:%M:%S"
-            res.index = pd.to_datetime(res["createdAt"], unit="ms")
-            res.index = pd.to_datetime(res.index.strftime(fmt))
-            del res["createdAt"]
-        return res
+        res = pd.concat(dfs)
+        if res.empty:
+            return res
+        if currency:
+            currency = [currency] if isinstance(currency, str) else currency
+            res = res[res['currency'].isin(currency)]
+        if not unix:
+            res['createdAt'] = pd.to_datetime(res['createdAt'], unit='ms')
+            res['maturityTime'] = pd.to_datetime(res['maturityTime'], unit='ms')
+        return res.squeeze()
     
     def get_outstanding_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50
