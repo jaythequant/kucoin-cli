@@ -289,7 +289,7 @@ class Client(BaseClient):
         data = {"type": type, "currency": currency}
         path = "accounts"
         resp = self._request("post", path, signed=True, data=data)
-        return resp.json()
+        return resp
 
     def get_subaccounts(self, id:str or None=None) -> dict:
         """Returns account details for all sub-accounts. Requires Trade authorization"""
@@ -298,7 +298,7 @@ class Client(BaseClient):
             path = f"path/{id}"
         url = self._request("get", path, signed=True)
         response = self.session.request("get", url)
-        resp = response.json()["data"]
+        resp = response["data"]
         if not resp:
             raise KucoinResponseError("No sub-accounts found")
         return resp
@@ -385,7 +385,7 @@ class Client(BaseClient):
         resp = self._request(
             "post", path, signed=True, api_version=self.API_VERSION2, data=data
         )
-        return resp.json()
+        return resp
 
     def ohlcv(
         self, tickers:str or list, start:dt.datetime or str=None,
@@ -1240,7 +1240,7 @@ class Client(BaseClient):
         self, currency:str, size:float=None, id=None, symbol:str=None, 
         priority:str="highest", mode="cross",
     ) -> dict:
-        """Function for repaying all outstanding margin debt against specified currency. 
+        """Repay outstanding margin debt against specified currency. 
 
         Parameters
         ----------

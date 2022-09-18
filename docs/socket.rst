@@ -1,4 +1,4 @@
-Kucoin REST API
----------------
+Kucoin WebSockets
+-----------------
 .. automodule:: kucoincli.sockets
    :members:
