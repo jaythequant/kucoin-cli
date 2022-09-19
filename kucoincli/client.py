@@ -303,7 +303,7 @@ class Client(BaseClient):
             raise KucoinResponseError("No sub-accounts found")
         return resp
 
-    def recent_orders(self, page:int=1, pagesize:int=50, id:str=None) -> pd.DataFrame:
+    def recent_orders(self, id:str=None, unix:bool=False, page:int=1, pagesize:int=500) -> pd.DataFrame:
         """Returns DataFrame with details of all trades placed in last 24 hours.
 
         Notes
@@ -314,15 +314,18 @@ class Client(BaseClient):
 
         Parameters
         ----------
+        id : str, optional
+            Specify an explicit order ID to return values for only that order
+        unix : bool, optional
+            If `unix=False` [default], return datetime values as datetime objects.
+            If `unix=True`, return datetime as unix epochs at millisecond precision.
         page : int 
             (Optional) JSON response is paganated. Use this variable
             to control the page number viewed. Default value returns first 
             page of paganated data.
         pagesize : int 
             (Optional) Max number of trades to display per response
-            Default `pagesize` is 50.
-        id : str, optional
-            Specify an explicit order ID to return values for only that order
+            Default `pagesize` is 500.
         
         Returns
         -------
@@ -339,11 +342,13 @@ class Client(BaseClient):
             raise KucoinResponseError("No orders in the last 24 hours or order ID not found.")
         if not id:
             df = pd.DataFrame(resp).squeeze()
-            df["createdAt"] = pd.to_datetime(df["createdAt"], unit="ms")
-            df = df.set_index("createdAt")
+            if unix:
+                df["createdAt"] = pd.to_datetime(df["createdAt"], unit="ms")
+                df = df.set_index("createdAt")
         else:
             df = pd.Series(resp)
-            df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
+            if unix:
+                df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
         return df
 
     def transfer(
@@ -541,23 +546,23 @@ class Client(BaseClient):
         
         Parameters
         ----------
-        currency : str or list or None, optional
+        currency : str or list, optional
             Specify a single pair or list of pairs to query. If `currency=None`, return 
             all trading pairs
-        market : str or list or None, optional
+        market : str or list, optional
             Filter response by trading market. If `market=None` return all markets. Markets:
             `['ALTS', 'BTC', 'DeFi', 'NFT', 'USDS', 'KCS', 'Polkadot', 'ETF', 'FIAT']`
-        base : str or list or None, optional
+        base : str or list, optional
             Specify explicit base currency or list of currencies. If `base_curr=None` 
             [DEFAULT], all base currencies will be returned.
-        quote : str or list or None, optional
-            Specify explicit quote currency or list of currencies. If `base_curr=None` 
+        quote : str or list, optional
+            Specify explicit quote currency or list of quote currencies. If `quote_curr=None` 
             [DEFAULT], all quote currencies will be returned.
-        marginable : bool or None
+        marginable : bool, optional
             If `marginable=True`, return only marginable securities. If `marginable=False` return only
             securities which cannot be traded on margin. If `marginable=None` [DEFAULT] return all
             trading pairs regardless of marginability.
-        tradable : bool or None
+        tradable : bool, optional
             If `tradable=True`, return trading-enabled securities. If `trading=False` return untradable
             listed pairs. If `tradable=None` [DEFAULT], return all securites regardless of tradability.
 
@@ -582,8 +587,10 @@ class Client(BaseClient):
         df = pd.DataFrame(resp["data"]).set_index("name")
         if pair:
             try:
+                pair = [pair] if isinstance(pair, str) else pair
+                pair = [symbol.upper() for symbol in pair]
                 df = df.loc[pair, :]            
-            except KeyError as e: 
+            except KeyError as e:
                 raise KeyError("Keys not found in response data", e)
         if marginable is not None:
             df = df[df["isMarginEnabled"] == marginable]
