@@ -2,6 +2,7 @@ import time
 import requests
 import base64, hashlib, hmac
 import json
+import math
 import calendar
 import warnings
 import logging
@@ -9,6 +10,7 @@ import functools
 import numpy as np
 import pandas as pd
 import datetime as dt
+import timedelta as td
 from collections import namedtuple
 from kucoincli.utils._utils import _parse_date
 from kucoincli.utils._utils import _parse_interval
@@ -308,9 +310,9 @@ class Client(BaseClient):
 
         Notes
         -----
-            - Max trades per page is 500; Min trades per page is 10
-            - Max number of trades returned (across all pages) is 1000
-            - Data is paganated into n pages displaying `pagesize` number of trades
+        - Max trades per page is 500; Min trades per page is 10
+        - Max number of trades returned (across all pages) is 1000
+        - Data is paganated into n pages displaying `pagesize` number of trades
 
         Parameters
         ----------
@@ -1613,71 +1615,168 @@ class Client(BaseClient):
 
         return responses
 
-    def list_orders(
-        self, status="done", symbols=None, side=None, type="trade",
-        start=None, stop=None, page=None, id=None, oid=None,
-    ):
-        """Get list of active and done orders"""
-        if type == 'cross' or type == 'margin':
-            type = 'MARGIN_TRADE'
-        elif type == 'isolated':
-            type = 'MARGIN_ISOLATED_TRADE'
+    def order_history(
+        self, acc_type:str="trade", symbols:str or list=None, start:str=None, end:str=None,
+        side:str=None, status:str="done", order_type:str or list=None, consolidated:bool=True,
+        page:int=None, id:str or list=None, oid:str or list=None, channel:str or list=None,
+    ) -> pd.DataFrame:
+        """Detailed cross account information on both active and completed orders
+
+        This function returns order details in two flavors: Consolidated and unconsolidated. 
+        The default consolidated response contains only order price, order size, value of
+        the order portion that was filled, amount of order size that was filled, fees paid, 
+        and relevant asset details. The alternative unconsolidated response contains an 
+        additional 10+ detail columns that will, for most users, not be useful. Use the 
+        `consolidated` argument to toggle between these responses.
+
+        Parameters
+        ----------
+        acc_type : str, optional
+            Spicefy which account type to return active/completed trades from. Valid account 
+            types are `['trade', 'cross', 'isolated']`. Default account type is trade.
+        symbols : str or list, optional
+            Return only specified symbol or list of symbols (e.g., `['BTC-USDT', 'ETH-USDT']`)
+        start : dt.datetime or str, optional
+            Specify earliest date to obtain trade history from. String dates should be in 
+            YYYY-MM-DD format with HH:MM:SS additioionally accepted (e.g., '2022-01-01 00:00:00').
+            If `start` is not specified, default behavior will be to return last 7 days of order
+            history.
+        end : dt.datetime or str, optional
+            Specify latest date to obtain trade history from. String formatting requirements are
+            identical to `start`. If `end` is specified, but not `start`, a ValueError will be
+            raised.
+        side : str, optional
+            Return only `'buy'` or `'sell'` orders. By default both buy and sell with be returned.
+        status : str, optional
+            Return only active or only completed orders. For completed orders use `status='done'` 
+            [default]. For active use, `status='active'`.
+        order_type : str or list, optional
+            Filter by order type(s). All order types are returned by default. Valid order types: 
+            `['limit', 'market', 'limit_stop', 'market_stop']`.
+        consolidated : bool, optional
+            If `True` [default], response is limited to most relevant columns. Set to `False`, 
+            for full response data.
+        page : int, optional
+            For better execution performance, specify a target page. If `page=None` [default],
+            all pages will be concatenated into one response. This process does require multiple
+            API calls assuming there is more than one page of responses and as such preformance will
+            be reduced.
+        id : str or list, optional
+            Filter response by ID or list of IDs.
+        oid : str or list, optional
+            Filter response by client OID (client OID are user assigned IDs attached to the order at
+            time of submission).
+        channel : str, optional
+            Filter by order entry channel. Valid channels include `['API', 'ANDROID', 'IOS', '']`
+
+        Returns
+        -------
+        DataFrame
+            Returns pandas DataFrame with historic order details. If no orders data is 
+            found, an empty dataframe will be returned.
+
+        See Also
+        --------
+        * `.recent_orders`: Light-weight function for obtaining orders placed in the last 24-hours
+        
+        Notes
+        -----
+        * Be aware that extended date ranges and large trade counts within a date ranges will
+        significantly impact function execution time. For quicker execution time, limit date ranges
+        as possible.
+        * Per 7 day interval, KuCoin will only return a maximum of 50,000 trades. If you are
+        executing / canceling more than 50,000 trades per 7 day period, this is not an appropriate
+        endpoint.
+        * Record of cancelled trades will only be maintained for 30 days by KuCoin's servers.
+        """
+        if end and not start:
+            raise ValueError('Connect specify `end` without also specifying `start`')
+        if acc_type == 'cross' or acc_type == 'margin':
+            acc_type = 'MARGIN_TRADE'
+        elif acc_type == 'isolated':
+            acc_type = 'MARGIN_ISOLATED_TRADE'
         else:
-            type = 'TRADE'
+            acc_type = 'TRADE'
 
         if start:
             if isinstance(start, str):
-                start = _parse_date(start, as_unix=True)
-            if isinstance(start, dt.datetime):
-                start = int(time.mktime(start.timetuple()))
+                start = _parse_date(start, as_unix=False)
+        if end:
+            if isinstance(end, str):
+                end = _parse_date(end, as_unix=False)
+        else:
+            end = dt.datetime.now()
 
-        if stop:
-            if isinstance(stop, str):
-                stop = _parse_date(stop, as_unix=True)
-            if isinstance(stop, dt.datetime):
-                stop = int(time.mktime(stop.timetuple()))
-
-        concat_paginated = False
-        if not page:
-            concat_paginated = True
-            page = 1
-
-        path = f"orders?status={status}&tradeType={type}&currentPage={page}"
         if start:
-            path += f"&startAt={start*1000}"
-        if stop:
-            path += f"&stopAt={stop*1000}"
-        resp = self._request("get", path, signed=True)
+            intervals = math.ceil(td.Timedelta(end - start).days/7)
+        else:
+            intervals = 1
+        responses = [] # Container for dataframe responses over multiple intervals
 
-        dfs = []
-        df = pd.DataFrame(resp["data"]["items"])
-        dfs.append(df)
-        if concat_paginated == True:
-            diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
-            for page in range(2, diff+2):
-                path = f"orders?status={status}&tradeType={type}&currentPage={page}"
-                if start:
-                    path += f"&startAt={start*1000}"
-                if stop:
-                    path += f"&stopAt={stop*1000}"
-                resp = self._request("get", path, signed=True)
-                dfs.append(pd.DataFrame(resp["data"]["items"]))
-        res = pd.concat(dfs).squeeze()
+        for _ in range(intervals):
+            concat_paginated = False
+            if not page:
+                concat_paginated = True
+                page = 1
+            path = f"orders?status={status}&tradeType={acc_type}&currentPage={page}&pageSize=500"
+            if start:
+                unix_start = int(time.mktime(start.timetuple()))
+                path += f"&startAt={unix_start*1000}"
+            resp = self._request("get", path, signed=True)
+
+            dfs = []
+            df = pd.DataFrame(resp["data"]["items"])
+            dfs.append(df)
+            if concat_paginated == True:
+                diff = resp["data"]["totalPage"] - resp["data"]["currentPage"]
+                # Rotate through additional results pages when neccesary
+                for page in range(2, diff+2):
+                    path = f"orders?status={status}&tradeType={acc_type}&currentPage={page}&pageSize=500"
+                    if start:
+                        path += f"&startAt={unix_start*1000}"
+                    resp = self._request("get", path, signed=True)
+                    temp_df = pd.DataFrame(resp["data"]["items"])
+                    dfs.append(temp_df)
+            res = pd.concat(dfs)
+            responses.append(res)
+            page = None # Reset page to none, this will force repeat page iteration
+            if start:
+                start += dt.timedelta(days=7)
         
+        res = pd.concat(responses, axis=0)
+        if res.empty:
+            return res
+        # Add a unix bool flag here
         res['createdAt'] = pd.to_datetime(res['createdAt'], unit='ms')
         if isinstance(res, pd.DataFrame):
             res.set_index('createdAt', inplace=True)
+            res.sort_values('createdAt', inplace=True)
+            end += dt.timedelta(days=1)
+            res = res.loc[:end]
 
-        if symbols:
-            symbols = [symbols] if isinstance(symbols, str) else symbols
-            res = res[res['symbol'].isin(symbols)]
         if id:
             id = [id] if isinstance(id, str) else id
             res = res[res['id'].isin(id)]
         if oid:
             oid = [oid] if isinstance(oid, str) else oid
             res = res[res['clientOid'].isin(oid)]
+        if channel:
+            res = res[res['channel'] == channel]
+        if order_type:
+            order_type = [order_type] if isinstance(order_type, str) else order_type
+            res = res[res['type'].isin(order_type)]
+        if symbols:
+            symbols = [symbols] if isinstance(symbols, str) else symbols
+            res = res[res['symbol'].isin(symbols)]
         if side:
-            res = res[res['side'] == side]            
-
-        return res
+            res = res[res['side'] == side]
+        if consolidated:
+            consol_columns = [
+                'symbol', 'type', 'side', 'price', 'size', 
+                'dealFunds', 'dealSize', 'fee'
+            ]
+            res = res[consol_columns]
+        float_cols = ['price', 'size', 'dealFunds', 'dealSize','fee']
+        res[float_cols] = res[float_cols].astype(float)
+        # somehow duplicates are getting in to the response...
+        return res.drop_duplicates().sort_index(ascending=False)

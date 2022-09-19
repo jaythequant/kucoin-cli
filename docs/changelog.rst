@@ -1,6 +1,15 @@
 Changelog
 =========
 
+1.3.7 and 1.3.8
+---------------
+Release Date: 2022-09-19
+
+Rolled changelog entry together as 1.3.7 contained only minor changes
+
+* Added `unix` argument to `.recent_orders`. If `unix=True`, datetimes will be returned in unix epochs at millisecond granularity 
+* Added extremely detailed endpoint for obtaining order history infromation. See `.order_history` docstring for full details. 
+
 1.3.6
 -----
 Release Date: 2022-09-18
