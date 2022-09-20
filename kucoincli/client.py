@@ -344,12 +344,12 @@ class Client(BaseClient):
             raise KucoinResponseError("No orders in the last 24 hours or order ID not found.")
         if not id:
             df = pd.DataFrame(resp).squeeze()
-            if unix:
+            if not unix:
                 df["createdAt"] = pd.to_datetime(df["createdAt"], unit="ms")
                 df = df.set_index("createdAt")
         else:
             df = pd.Series(resp)
-            if unix:
+            if not unix:
                 df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
         return df
 
@@ -1348,7 +1348,7 @@ class Client(BaseClient):
         return res.squeeze()
 
     def margin_balance(
-        self, currency:str or list=None, unix:bool=False, page:int=None
+        self, currency:str or list=None, unix:bool=False, id:str or list=None, page:int=None
     ) -> pd.DataFrame:
         """Query detailed information regarding current margin balances against the user's account.
         
@@ -1366,9 +1366,9 @@ class Client(BaseClient):
         
         Returns
         -------
-        DataFrame of Series
-            Return pandas DataFrame with list outstanding margin debts. If only a single debt is 
-            outstanding returns a series. If no debts are outstanding, returns an empty dataframe.
+        DataFrame
+            Return pandas DataFrame with list outstanding margin debts. If no debts are 
+            outstanding, returns an empty dataframe.
         """
         concat_paginated = False
         if not page:
@@ -1394,7 +1394,10 @@ class Client(BaseClient):
         if not unix:
             res['createdAt'] = pd.to_datetime(res['createdAt'], unit='ms')
             res['maturityTime'] = pd.to_datetime(res['maturityTime'], unit='ms')
-        return res.squeeze()
+        if id:
+            id = [id] if isinstance(id, str) else id
+            res = res[res['tradeId'].isin(id)]
+        return res
     
     def get_outstanding_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50
@@ -1667,7 +1670,7 @@ class Client(BaseClient):
             Filter response by client OID (client OID are user assigned IDs attached to the order at
             time of submission).
         channel : str, optional
-            Filter by order entry channel. Valid channels include `['API', 'ANDROID', 'IOS', '']`
+            Filter by order entry channel. Valid channels include `['API', 'ANDROID', 'IOS', 'WEB']`
 
         Returns
         -------
@@ -1780,3 +1783,9 @@ class Client(BaseClient):
         res[float_cols] = res[float_cols].astype(float)
         # somehow duplicates are getting in to the response...
         return res.drop_duplicates().sort_index(ascending=False)
+
+    def get_borrow_order(self, id):
+        """Call specific loan via trade ID"""
+        path = f"margin/borrow?orderId={id}"
+        resp = self._request("get", path, signed=True)
+        return resp
