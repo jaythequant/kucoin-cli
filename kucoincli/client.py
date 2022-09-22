@@ -354,24 +354,30 @@ class Client(BaseClient):
         return df
 
     def transfer(
-        self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None
+        self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None,
+        from_pair:str=None, to_pair:str=None,
     ) -> dict:
-        """Function for transferring funds between margin, trade and main accounts.
+        """Function for transferring funds between cross, isolated, trade, and main accounts.
 
         Parameters
         ----------
-        currency : str 
-            Currency to transfer between accounts (e.g., BTC-USDT).
-        source_acc : str 
-            Source account type. Options are: Main, trade, and margin.
+        currency : str
+            Currency to transfer between accounts (e.g., BTC).
+        source_acc : str
+            Source account type. Current options: `['main', 'trade', 'margin', 'isolated']`
         dest_acc : str 
-            Destination account type. Options are: Main, trade, and margin.
-        amount : float 
-            Positive float value. Must be of the transfer currency precision.
-        oid : str
-            (Optional) Unique order ID for identification of transfer. OID will 
-            autogenerate an integer based on the UNIX epoch if not explicitly 
-            given.
+            Destination account type. Options are: `['main', 'trade', 'margin', 'isolated']`
+        amount : float
+            Currency amount to transfer. Must be of the transfer currency precision.
+        oid : str, optional
+            Unique order ID for identification of transfer. OID will autogenerate
+            if not provided.
+        from_pair : str, optional
+            Specify trading pair (e.g., BTC-USDT) to transfer assets from. Only required 
+            when `source_acc='isolated'`.
+        to_pair : str, optional
+            Specify trading pair (e.g., BTC-USDT) to transfer assets to. Only required
+            when `dest_acc='isolated'`.
         
         Returns
         -------
@@ -389,6 +395,14 @@ class Client(BaseClient):
             data["clientOid"] = oid
         else:
             data["clientOid"] = str(int(time.time() * 10000))
+        if source_acc == 'isolated':
+            if not from_pair:
+                raise ValueError('Must specify `from_pair` when transfering from isolated')
+            data['fromTag'] = from_pair.upper()
+        if dest_acc == 'isolated':
+            if not to_pair:
+                raise ValueError('Must specify `to_pair` when transfering to isolated')
+            data['toTag'] = to_pair.upper()
         resp = self._request(
             "post", path, signed=True, api_version=self.API_VERSION2, data=data
         )
@@ -635,31 +649,32 @@ class Client(BaseClient):
         df.set_index("timestamp", inplace=True)
         return df
 
-    def lending_rate(self, currency:str, term:int=None) -> pd.DataFrame:
+    def lending_rate(self, currency:str, term:int=None, maxrate:float=None) -> pd.DataFrame:
         """Query API to obtain current a list of available margin terms
-
-        Notes
-        -----
-            Sorted descending on sequence of daily interest rate and term
 
         Parameters
         ----------
         currency : str
             Target currency to pull lending rates on (e.g., BTC)
+        term : int, optional
+            Specify term details 
         
         Returns
         -------
         DataFrame
-            Returns pandas DataFrame containing margin rate details
+            Returns pandas DataFrame containing margin rate details.
         """
         path = f"margin/market?currency={currency.upper()}"
         if term:
             path = path + f"&term={term}"
         resp = self._request("get", path)
-        if df.empty:
-            KucoinResponseError("No results for currency and term combination")
         df = pd.DataFrame(resp["data"])
-        return df
+        if df.empty:
+            err_msg = f"No results for {currency} returned"
+            if term:
+                err_msg += f" @ {term} day term"
+            raise KucoinResponseError(err_msg)
+        return df.astype(float)
 
     def get_trade_history(self, pair:str, ascending:bool=False) -> pd.DataFrame:
         """Query API for most recent 100 filled trades for target pair
@@ -699,8 +714,7 @@ class Client(BaseClient):
         return resp["data"]
 
     def margin_account(
-        self, asset:None or str or list=None, balance:None or float=None, 
-        mode:str="cross",
+        self, asset:str or list=None, balance:float=None, mode:str="cross",
     ) -> pd.DataFrame or pd.Series:
         """Return cross margin account details
 
@@ -1219,7 +1233,7 @@ class Client(BaseClient):
             data["funds"] = funds
         if margin:
             path = "margin/order" # Update to margin path
-            data["marginMode"] = mode
+            data["marginModel"] = mode
             data["autoBorrow"] = autoborrow
         if type == "limit":
             data["price"] = price
@@ -1257,15 +1271,15 @@ class Client(BaseClient):
             Specific currency to repay liabilities against (e.g., BTC).
         size : float, optional
             Total sum to repay (in currency terms). Must be a multiple of currency max
-            precision. If `size=None` [defualt], repayment size is max of total margin
+            precision. If `size=None` [default], repayment size is max of total margin
             debt or total available balance.
         id : str or None, optional
             Repay by specific order ID. If `id=None` [default], repayment will occur
             across all borrowings for `currency` in `priority` order.
         priority : str, optional
             Specify how to prioritize debt repayment.
-            - Highest: [default] Repay highest interest rate loans first
-            - Soonest: Repay nearest term loans first 
+            - `highest`: [default] Repay highest interest rate loans first
+            - `soonest`: Repay loans with shortest remaining term first 
 
         Returns
         -------
@@ -1544,17 +1558,40 @@ class Client(BaseClient):
         resp = self._request("post", path, data=data, signed=True)
         return resp
 
-    def get_borrow_order(self, id):
-        """Get borrow order details for specific order ID"""
-        path = f"margin/borrow?orderId={id}"
-        resp = self._request("get", path, signed=True)
-        return resp
-
     def borrow(
         self, currency:str, size:float, maxrate:float=None, 
-        type:str="FOK", term:int or list or None=None,
+        type:str="IOC", term:int or list or None=None,
     ) -> dict:
-        """Post borrow request to KuCoin lending markets"""
+        """Post borrow request to KuCoin lending markets
+        
+        Parameters
+        ----------
+        currency : str
+            Specify currency to borrow
+        size : float
+            Total borrow size
+        maxrate : float, optional
+            Maximum acceptable daily interest rate. If not specified, all rates will
+            be accepted.
+        term : int or list, optional
+            Specify acceptable term length or list of term lengths. If not specified,
+            all term lengths will be accepted. Currently supportered term lengths:
+            `[7, 14, 28]`. Term lengths are measured in days
+        type : str, optional
+            Execution type. Borrow orders supports `FOK` or `IOC` orders.
+            * `IOC`: Immediate or Cancel. This is the detault order submission. 
+              Maximum portion of borrow order that is immediately fillable will 
+              be executed with the remaining portion immediately cancelled.
+            * `FOK`: Fill or Kill. FOK orders will either be filled in their
+              entirety or immediately cancelled. No partial fulfillment is
+              allowed.
+
+        Returns
+        -------
+        dict
+            Returns dictionary with order details. Use orderId with 
+            `.get_borrow_order` to obtain order details.
+        """
         data = {"currency": currency, "type": type, "size": size}
         if maxrate:
             data["maxRate"] = maxrate
@@ -1566,19 +1603,46 @@ class Client(BaseClient):
         resp = self._request("post", path, data=data, signed=True)
         return resp
 
-    def cancel_order(self, symbols=None, type='spot', id=None, oid=None):
-        """Cancel all orders or specific order (via OID)
+    def cancel_order(
+        self, symbols:str or list=None, type:str='trade', oid:str or list=None, 
+        cid:str or list=None,
+    ) -> list:
+        """Cancel orders by ID or cancel all orders related to a specific currency pair
+
+        Use this endpoint to cancel single orders or to submit batches of cancellations.
+        You are able to submit blended batches with some CID/OID lists alongside lists of 
+        symbols (although all orders must be in the same account type). It is highly recommended
+        that you avoid overlap in your cancellation batches. For example, users should avoid 
+        submitting an order ID corresponding to an ETH-USDT order while also submitting the 
+        cancellation of all ETH-USDT orders. Be aware that each ID and symbol pair added for
+        cancellation requires additional API calls on the backend. For best performance, 
+        work to consolidate the number of total requests when submitting cancellations.
         
-        symbol : str or list, optional
-        type : str
-            `['trade', 'cross', 'isolated']`
-        id : str or list
-            Unique order ID
-        
-        
+        Parameters
+        ----------
+        symbols : str or list, optional
+            Specify a currency pair or list of currency pairs (e.g. 'ETH-USDT') for which to 
+            cancel ALL outstanding orders. Users must specify one or more of `symbols`, `id`,
+            or `oid` arguments.
+        type : str, optional
+            Specify market in which to submit cancellations. Current markets are 
+            `['trade', 'cross', 'isolated']`. Default is the trade (spot) market.
+        oid : str or list, optional
+            Specify one or more orders by OID. OID are assigned by KuCoin upon order
+            submission. Users must specify one or more of `symbols`, `id`,
+            or `oid` arguments.
+        cid : str or list, optional
+            Specify one or more orders by unique client-assigned ID. Client IDs are attached
+            to orders by the client upon order submission. Users must specify one or more 
+            of `symbols`, `id`, or `oid` arguments.
+
+        Response
+        --------
+        list
+            List of cancelled order IDs
         """
         if not symbols and not id and not oid:
-            raise ValueError("Must specify one of `symbols`, `id` or `oid`")
+            raise ValueError("Must specify one of `symbols`, `id`, or `oid`")
 
         if type == 'cross' or type == 'margin':
             type = 'MARGIN_TRADE'
@@ -1589,21 +1653,21 @@ class Client(BaseClient):
 
         cancellations = []
 
-        if id:
-            ids = [id] if isinstance(id, str) else id
-            for id in ids:
-                path = f"orders/{oid}"
+        if cid:
+            cids = [cid] if isinstance(cid, str) else cid
+            for cid in cids:
+                path = f"order/client-order/{cid}"
                 cancellations.append(path)
+        if oid:
+            oids = [oid] if isinstance(oid, str) else oid
+            for oid in oids:
+                path = f"orders/{oid}"
+                cancellations.append(oid)
         if symbols:
             symbols = [symbols] if isinstance(symbols, str) else symbols
             for symbol in symbols:
                 path = f"orders?symbol={symbol}&tradeType={type}"
                 cancellations.append(path)
-        if oid:
-            oids = [oid] if isinstance(oid, str) else oid
-            for oid in oids:
-                path = f"order/client-order/{oid}"
-                cancellations.append(oid)
 
         responses = []
         for path in cancellations:
@@ -1615,6 +1679,7 @@ class Client(BaseClient):
                     "Order cancellation failure:" +
                     resp["msg"]
                 )
+                pass
 
         return responses
 
@@ -1629,13 +1694,13 @@ class Client(BaseClient):
         The default consolidated response contains only order price, order size, value of
         the order portion that was filled, amount of order size that was filled, fees paid, 
         and relevant asset details. The alternative unconsolidated response contains an 
-        additional 10+ detail columns that will, for most users, not be useful. Use the 
+        additional 20+ detail columns that will, for most users, not be useful. Use the 
         `consolidated` argument to toggle between these responses.
 
         Parameters
         ----------
         acc_type : str, optional
-            Spicefy which account type to return active/completed trades from. Valid account 
+            Specify which account type to return active/completed trades from. Valid account 
             types are `['trade', 'cross', 'isolated']`. Default account type is trade.
         symbols : str or list, optional
             Return only specified symbol or list of symbols (e.g., `['BTC-USDT', 'ETH-USDT']`)
@@ -1781,11 +1846,11 @@ class Client(BaseClient):
             res = res[consol_columns]
         float_cols = ['price', 'size', 'dealFunds', 'dealSize','fee']
         res[float_cols] = res[float_cols].astype(float)
-        # somehow duplicates are getting in to the response...
+        # somehow duplicates are getting into the response...
         return res.drop_duplicates().sort_index(ascending=False)
 
     def get_borrow_order(self, id):
-        """Call specific loan via trade ID"""
+        """Use orderId from `.borrow` to obtain loan details"""
         path = f"margin/borrow?orderId={id}"
         resp = self._request("get", path, signed=True)
         return resp
