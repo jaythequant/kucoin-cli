@@ -1641,7 +1641,7 @@ class Client(BaseClient):
         list
             List of cancelled order IDs
         """
-        if not symbols and not id and not oid:
+        if not symbols and not cid and not oid:
             raise ValueError("Must specify one of `symbols`, `id`, or `oid`")
 
         if type == 'cross' or type == 'margin':
@@ -1662,7 +1662,7 @@ class Client(BaseClient):
             oids = [oid] if isinstance(oid, str) else oid
             for oid in oids:
                 path = f"orders/{oid}"
-                cancellations.append(oid)
+                cancellations.append(path)
         if symbols:
             symbols = [symbols] if isinstance(symbols, str) else symbols
             for symbol in symbols:
@@ -1673,10 +1673,14 @@ class Client(BaseClient):
         for path in cancellations:
             resp = self._request("delete", path, signed=True)
             if resp["code"] == '200000':
-                responses = responses + resp["data"]["cancelledOrderIds"]
+                r = resp["data"].get("cancelledOrderIds")
+                if not r:
+                    r = resp['data'].get("cencelledOrderId")
+                r = [r] if isinstance(r, str) else r
+                responses = responses + r
             else:
                 logging.error(
-                    "Order cancellation failure:" +
+                    "Order cancellation failure: " +
                     resp["msg"]
                 )
                 pass
