@@ -1,6 +1,37 @@
 Changelog
 =========
 
+1.4.2
+-----
+Release Date:
+
+In `ohlcv`, begin has been officially deprecated as an argument.
+
+Quality of Life
+^^^^^^^^^^^^^^^
+* `get_server_time`: Added `unix` boolean argument and added deprecation warning for old `format` argument. In a later release, `format` will be deprecated in
+  favor of the new argument.
+* `order_history`: Added `unix` boolean argument. Set `unix=True` to return timestamps in unix epochs. Default behavior will still return timestamps in as
+  datetime format. For *very* minor performance increases in live trading, set `unix=True` to avoid the call to `pd.to_datetime`.
+* `transfer`: Added 'spot' and 'cross' as valid inputs for `source_acc` and `dest_acc` arguments. These inputs are more descriptive than the previous 'trade'
+  and 'margin' terms. Note that 'trade' and 'margin' are still supported and are now synonymous with 'spot' and 'cross' respectively.
+* `cancel_order`: Now supports 'spot' as an `acc_type` argument input. The prior 'trade' input is still supported and is synonymous with 'spot'.
+
+1.4.1
+-----
+Release Date: 2022-09-22
+
+Bugs Fixes
+^^^^^^^^^^
+* `.cancel_order`: A few errors in parsing responses were discovered and fixed.
+
+Quality of Life
+^^^^^^^^^^^^^^^
+* `get_level1_orderbook`: Not has `unix` argument, consistent with other functions (deprecated `time` argument). Output is now automatically cast to 
+  float values (previously returned strings).
+* `order_history`: Changed `consolidated` to default to `False` (previously defaulted to `True`). I expected that consolidated responses would be more
+  useful, but found that in live execution, I was consistently setting it to `False`.
+
 1.4.0 and 1.3.9
 ---------------
 Release Date: 2022-09-21

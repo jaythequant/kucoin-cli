@@ -364,9 +364,11 @@ class Client(BaseClient):
         currency : str
             Currency to transfer between accounts (e.g., BTC).
         source_acc : str
-            Source account type. Current options: `['main', 'trade', 'margin', 'isolated']`
+            Source account type. Current options: `['main', 'spot', 'cross', 'isolated']`.
+            'trade' is synonymous with 'spot'. 'margin' is synonymous with 'cross'.
         dest_acc : str 
-            Destination account type. Options are: `['main', 'trade', 'margin', 'isolated']`
+            Destination account type. Options are: `['main', 'spot', 'cross', 'isolated']`.
+            'trade' is synonymous with 'spot'. 'margin' is synonymous with 'cross'.
         amount : float
             Currency amount to transfer. Must be of the transfer currency precision.
         oid : str, optional
@@ -385,6 +387,14 @@ class Client(BaseClient):
             JSON dictionary with transfer confirmtion and details.
         """
         path = "accounts/inner-transfer"
+        if source_acc == 'spot': 
+            source_acc = 'trade'
+        if dest_acc == 'spot': 
+            dest_acc = 'trade'
+        if source_acc == 'cross':
+            source_acc = 'margin'
+        if dest_acc == 'cross':
+            dest_acc == 'margin'
         data = {
             "currency": currency,
             "from": source_acc,
@@ -409,9 +419,8 @@ class Client(BaseClient):
         return resp
 
     def ohlcv(
-        self, tickers:str or list, start:dt.datetime or str=None,
-        end:None or dt.datetime or str=None, interval:str="1day", 
-        ascending:bool=True, warning:bool=True, begin:dt.datetime or str=None,
+        self, tickers:str or list, start:dt.datetime or str, end:dt.datetime or str=None, 
+        interval:str="1day", ascending:bool=True, warning:bool=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -447,17 +456,6 @@ class Client(BaseClient):
         DataFrame
             Returns pandas Dataframe indexed to datetime
         """
-        # This will be removed once begin is deprecated
-        if not start and not begin:
-            raise ValueError("Must specify `start`")
-        if begin:
-            warnings.warn(
-                "Please use keyword `start` instead of `begin`. `begin` will" +
-                "be deprecated in the future."
-            )
-            start = begin
-        ###
-
         if isinstance(start, str):
             start = _parse_date(start)
 
@@ -810,22 +808,20 @@ class Client(BaseClient):
             return {f"{type.title()} Base Rate": resp}
         return resp["data"]
 
-    def get_level1_orderbook(self, pair:str, time="utc") -> pd.Series or pd.DataFrame:
+    def get_level1_orderbook(self, pair:str, unix=True) -> pd.Series or pd.DataFrame:
         """Obtain best bid-ask spread details for a specified pair"""
         path = f"market/orderbook/level1?symbol={pair.upper()}"
         resp = self._request("get", path)
         resp = resp["data"]
         if resp is None:
             raise KucoinResponseError("No data returned for pair.")
-        ser = pd.Series(resp, name=pair)
-        if time == "utc":
+        ser = pd.Series(resp, name=pair).astype(float)
+        if not unix:
             ser.loc["time"] = pd.to_datetime(
                 dt.datetime.utcfromtimestamp(
                     ser.loc["time"] / 1000
                 ).strftime('%Y-%m-%d %H:%M:%S')
             )
-        if time == "unix" or not time:
-            pass
         return ser
 
     def orderbook(
@@ -1079,7 +1075,7 @@ class Client(BaseClient):
             resp = self._request("post", path, signed=is_signed)
         return resp["data"]
 
-    def get_server_time(self, format:str="unix") -> int:
+    def get_server_time(self, format:str=None, unix=True) -> int:
         """Return server time in UTC time to millisecond granularity
 
         Notes
@@ -1093,18 +1089,23 @@ class Client(BaseClient):
         Parameters
         ----------
         format : str, optional
-            If `format=unix`, return the time as UTC Unix-epoch with millisecond accuracy. If
-            `format=datetime` [default] return a datetime object in UTC time.
+            If `format='unix'`, return the time as UTC Unix-epoch with millisecond accuracy. If
+            `format='datetime'` [default] return a datetime object in UTC time.
+        unix : bool, optional
+            If `unix=True`, return server time as Unix epoch with millisecond accuracy. Else,
+            return datetime object.
         
         Returns
         -------
         int or datetime.datetime
             Returns time to the millisecond either as a UNIX epoch or datetime object
         """
+        if format:
+            warnings.warn('`format` argument will be deprecated in a future release. Please use `unix` argument')
         path = "timestamp"
         resp = self._request("get", path)
         resp = resp["data"]
-        if format == "datetime":
+        if format == "datetime" or not unix:
             resp = dt.datetime.utcfromtimestamp(
                 int(resp) / 1000
             )
@@ -1688,14 +1689,14 @@ class Client(BaseClient):
         return responses
 
     def order_history(
-        self, acc_type:str="trade", symbols:str or list=None, start:str=None, end:str=None,
-        side:str=None, status:str="done", order_type:str or list=None, consolidated:bool=True,
+        self, symbols:str or list=None, start:str=None, end:str=None, acc_type:str="trade",
+        side:str=None, status:str="done", order_type:str or list=None, consolidated:bool=False,
         page:int=None, id:str or list=None, oid:str or list=None, channel:str or list=None,
     ) -> pd.DataFrame:
         """Detailed cross account information on both active and completed orders
 
         This function returns order details in two flavors: Consolidated and unconsolidated. 
-        The default consolidated response contains only order price, order size, value of
+        The consolidated response contains only order price, order size, value of
         the order portion that was filled, amount of order size that was filled, fees paid, 
         and relevant asset details. The alternative unconsolidated response contains an 
         additional 20+ detail columns that will, for most users, not be useful. Use the 
@@ -1726,8 +1727,8 @@ class Client(BaseClient):
             Filter by order type(s). All order types are returned by default. Valid order types: 
             `['limit', 'market', 'limit_stop', 'market_stop']`.
         consolidated : bool, optional
-            If `True` [default], response is limited to most relevant columns. Set to `False`, 
-            for full response data.
+            If `False` [default], return all columns in full response. Set to `True`, for focused
+            response data.
         page : int, optional
             For better execution performance, specify a target page. If `page=None` [default],
             all pages will be concatenated into one response. This process does require multiple
