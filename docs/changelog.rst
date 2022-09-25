@@ -41,16 +41,20 @@ Rolled changelog entry together as 1.39 was primarily bug-squashing.
 New Features 
 ^^^^^^^^^^^^
 * Added support for isolated margin in the `.transfer` function
+  
   * Transferring into and out of isolated margin accounts requires an extra argument (`from_pair` or `to_pair`, respectively).
     Please review the docstrings or KuCoin API documentation for details.
+
 * Completely overhauled the `.cancel_order` function. `.cancel_order` is now a one-stop shop for order cancellation. The function
   has a comprehensive docstring attached for user reference. Use this function to:
+
   * Cancel all orders associated with a trading pair or list of trading pairs.
   * Submit cancellations within all three major markets: spot, cross, and isolated.
   * Cancel orders targetted on client IDs or vanilla IDs.
   * Mix and match cancellation methods to submit large batch cancellations (i.e., cancel 100 order IDs at a time by passing a list to
     to `oid` or `cid` arguments or cancel all orders related to the BTC-USDT pair while simultaneously cancelling several
     order IDs associated with other trading pairs.
+
 * Improved `lending_rate` endpoint. Also, this endpoint had an issue with error handling previous and this has been fixed.
 
 Quality of Life
@@ -106,6 +110,8 @@ Release Date: 2022-09-18
 1.1.0
 -----
 Release Date: 2022-06-08
+
 * Completely reworked `kucoincli.pipe`
+  
     * Made `schema` optional
     * Added functionality 
