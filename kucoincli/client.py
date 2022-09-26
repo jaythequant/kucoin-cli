@@ -424,16 +424,12 @@ class Client(BaseClient):
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
-        Notes
-        -----
-            Server time reported in UTC
-
         Parameters
         ----------
         tickers : str or list
             Currency pair or list of pairs. Pair names must be formatted in upper 
             case (e.g. ETH-BTC)
-        begin : str or datetime.datetime
+        start : str or datetime.datetime
             Earliest time for queried date range. May be given either as a datetime object
             or string. String format may include hours/minutes/seconds or may not
             String format examples: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
@@ -455,6 +451,10 @@ class Client(BaseClient):
         -------
         DataFrame
             Returns pandas Dataframe indexed to datetime
+
+        Notes
+        -----
+            Server time reported in UTC
         """
         if isinstance(start, str):
             start = _parse_date(start)
@@ -598,7 +598,7 @@ class Client(BaseClient):
         """
         path = "symbols"
         resp = self._request("get", path)
-        df = pd.DataFrame(resp["data"]).set_index("name")
+        df = pd.DataFrame(resp["data"]).set_index("symbol")
         if pair:
             try:
                 pair = [pair] if isinstance(pair, str) else pair
@@ -742,7 +742,7 @@ class Client(BaseClient):
             resp = self._request("get", path, signed=True)
             df = pd.DataFrame(resp["data"]["accounts"]).set_index("currency")
             df = df.astype(float)
-            df.sort_values("totalBalance", inplace=True)
+            df = df.sort_values("totalBalance", ascending=False)
         if mode == "isolated":
             path = "isolated/accounts"
             resp = self._request("get", path, signed=True)
@@ -1363,7 +1363,7 @@ class Client(BaseClient):
         return res.squeeze()
 
     def margin_balance(
-        self, currency:str or list=None, unix:bool=False, id:str or list=None, page:int=None
+        self, id:str or list=None, currency:str or list=None, unix:bool=False, page:int=None
     ) -> pd.DataFrame:
         """Query detailed information regarding current margin balances against the user's account.
         
@@ -1412,7 +1412,7 @@ class Client(BaseClient):
         if id:
             id = [id] if isinstance(id, str) else id
             res = res[res['tradeId'].isin(id)]
-        return res
+        return res.set_index('tradeId')
     
     def get_outstanding_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50

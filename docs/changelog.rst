@@ -16,6 +16,9 @@ Quality of Life
 * `transfer`: Added 'spot' and 'cross' as valid inputs for `source_acc` and `dest_acc` arguments. These inputs are more descriptive than the previous 'trade'
   and 'margin' terms. Note that 'trade' and 'margin' are still supported and are now synonymous with 'spot' and 'cross' respectively.
 * `cancel_order`: Now supports 'spot' as an `acc_type` argument input. The prior 'trade' input is still supported and is synonymous with 'spot'.
+* `margin_balance`: `tradeId` column is now automatically set as index. Previously, the returned dataframe had no set index.
+* `symbols`: Reversed previous index column change from `name` to `symbol`. This change will ensure naming consitency between other functions such as OHLCV.
+  New index column is `symbol`. Be aware that `name` is the trading pair name and may differ from `symbol`.
 
 1.4.1
 -----
