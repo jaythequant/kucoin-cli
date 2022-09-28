@@ -78,7 +78,8 @@ class BaseClient(Socket):
 
         try:
             response = self.session.request(method, uri, data=payload)
-        except ConnectionError: # macOS sometimes throws this error if session has idled
+        # Below error is raised when session idles for to long (typically only on macOS)
+        except requests.exceptions.ConnectionError:
             response = self.session.request(method, uri, data=payload)
 
         if response.status_code == 200:

@@ -1,9 +1,15 @@
 Changelog
 =========
 
+1.4.3
+-----
+Release Date: 2022-09-27
+
+Added exception handling for ConnectionError when submitting POST request. This issue was raised due to an idled request session and effected primarily macOS.
+
 1.4.2
 -----
-Release Date:
+Release Date: 2022-09-25
 
 In `ohlcv`, begin has been officially deprecated as an argument.
 
@@ -17,7 +23,7 @@ Quality of Life
   and 'margin' terms. Note that 'trade' and 'margin' are still supported and are now synonymous with 'spot' and 'cross' respectively.
 * `cancel_order`: Now supports 'spot' as an `acc_type` argument input. The prior 'trade' input is still supported and is synonymous with 'spot'.
 * `margin_balance`: `tradeId` column is now automatically set as index. Previously, the returned dataframe had no set index.
-* `symbols`: Reversed previous index column change from `name` to `symbol`. This change will ensure naming consitency between other functions such as OHLCV.
+* `symbols`: Reversed previous index column change from `name` to `symbol`. This change will ensure naming consistency between other functions such as OHLCV.
   New index column is `symbol`. Be aware that `name` is the trading pair name and may differ from `symbol`.
 
 1.4.1
