@@ -1679,7 +1679,8 @@ class Client(BaseClient):
                 if not r:
                     r = resp['data'].get("cencelledOrderId")
                 r = [r] if isinstance(r, str) else r
-                responses = responses + r
+                if r:
+                    responses = responses + r
             else:
                 logging.error(
                     "Order cancellation failure: " +
@@ -1697,11 +1698,13 @@ class Client(BaseClient):
         """Detailed cross account information on both active and completed orders
 
         This function returns order details in two flavors: Consolidated and unconsolidated. 
-        The consolidated response contains only order price, order size, value of
-        the order portion that was filled, amount of order size that was filled, fees paid, 
-        and relevant asset details. The alternative unconsolidated response contains an 
-        additional 20+ detail columns that will, for most users, not be useful. Use the 
-        `consolidated` argument to toggle between these responses.
+        The consolidated response contains only order price, order size, value of the filled
+        portion, amount of order size that was filled, fees paid, and relevant asset details
+        Unconsolidated responses contain an additional 20+ detail columns that will, for most 
+        users, not be useful. Use the `consolidated` argument to toggle between these responses.
+        Be aware that this endpoint is both slow to run and slow to update. As such, it is not
+        intended for use in performance-oriented algorithms. For significantly faster performance
+        time, use `.pull_by_oid` or `.pull_by_cid` functions.
 
         Parameters
         ----------
@@ -1752,6 +1755,8 @@ class Client(BaseClient):
         See Also
         --------
         * `.recent_orders`: Light-weight function for obtaining orders placed in the last 24-hours
+        * `.pull_by_cid`: Pull a single order execution detail by user-generated OID. High performance function.
+        * `.pull_by_oid`: Pull a single order execution detail by KuCoin-generated OID. High performance function.
         
         Notes
         -----
@@ -1860,3 +1865,15 @@ class Client(BaseClient):
         path = f"margin/borrow?orderId={id}"
         resp = self._request("get", path, signed=True)
         return resp
+
+    def pull_by_cid(self, cid:str) -> pd.Series:
+        """Pull single order by KuCoin generated OID"""
+        path = f"order/client-order/{cid}"
+        resp = self._request("get", path, signed=True)
+        return pd.Series(resp['data'])
+
+    def pull_by_oid(self, oid:str) -> pd.Series:
+        """Pull single order by user-generated client OID"""
+        path = f"orders/{oid}"
+        resp = self._request("get", path, signed=True)
+        return pd.Series(resp['data'])
