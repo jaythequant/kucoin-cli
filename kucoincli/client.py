@@ -157,26 +157,20 @@ class Client(BaseClient):
 
     Parameters
     ----------
-    api_key : str 
-        (Optional) API key generated upon creation of API endpoint on
-        kucoin.com. If no API key is given, the user cannot access functions requiring
-        account level authorization, but can access endpoints that require general auth
-        such as kline historic data.
-    api_secret : str 
-        (Optional) Secret API sequence generated upon create of API
-        endpoint on kucoin.com. See api_keydocs for info on optionality of 
+    api_key : str, optional
+        API key generated upon creation of API endpoint on kucoin.com. If no API key is given,
+        the user cannot access functions requiring account level authorization, but can access
+        endpoints that require general auth such as general market data.
+    api_secret : str, optional
+        Secret API sequence generated upon create of API endpoint on kucoin.com. 
+        See api_key docs for info on optionality of 
         variable
-    api_passphrase : str 
-        (Optional) User created API passphrase. Passphrase is 
-        created by the user during API setup on kucoin.com. See api_keydocs for 
-        info on optionality of variable
+    api_passphrase : str, optional
+        User created API passphrase. Passphrase is created by the user during API setup on 
+        kucoin.com. See api_key docs for info on optionality of variable
     sandbox : bool 
-        If sandbox = True, access a special papertrading API version
-        available for testing trading. For more details visit: https://sandbox.kucoin.com/
-        Be aware that (1) sandbox API key, secret, and passphrase are NOT the same as
-        regular kucoin API and may only be obtained from the sandbox website and (2)
-        that sandbox markets are completely seperate than kucoin's regular sites. It is
-        recommended that you not use sandbox as the data is highly corrupted.
+        If `sandbox=True`, access a special papertrading API version available for testing
+        trading. For more details visit: https://sandbox.kucoin.com/.
     """
 
     REST_API_URL = "https://api.kucoin.com"
@@ -1413,6 +1407,7 @@ class Client(BaseClient):
         if id:
             id = [id] if isinstance(id, str) else id
             res = res[res['tradeId'].isin(id)]
+        res.iloc[:,2:8] = res.iloc[:, 2:8].astype(float)
         return res.set_index('tradeId')
     
     def get_outstanding_loans(
@@ -1692,7 +1687,7 @@ class Client(BaseClient):
 
     def order_history(
         self, symbols:str or list=None, start:str=None, end:str=None, acc_type:str="trade",
-        side:str=None, status:str="done", order_type:str or list=None, consolidated:bool=False,
+        side:str=None, status:str="done", order_type:str or list=None, consolidated:bool=True,
         page:int=None, id:str or list=None, oid:str or list=None, channel:str or list=None,
     ) -> pd.DataFrame:
         """Detailed cross account information on both active and completed orders
@@ -1866,14 +1861,28 @@ class Client(BaseClient):
         resp = self._request("get", path, signed=True)
         return resp
 
-    def pull_by_cid(self, cid:str) -> pd.Series:
+    def pull_by_cid(self, cid:str, unix:bool=True) -> pd.Series:
         """Pull single order by KuCoin generated OID"""
         path = f"order/client-order/{cid}"
         resp = self._request("get", path, signed=True)
-        return pd.Series(resp['data'])
+        try:
+            ser = pd.Series(resp['data'])
+        except KeyError:
+            raise KucoinResponseError(f'No response returned for {cid}')
+        ser.iloc[5:11] = ser.iloc[5:11].astype(float)
+        if not unix:
+            ser.createdAt = pd.to_datetime(ser.createdAt, unit='ms')
+        return ser
 
-    def pull_by_oid(self, oid:str) -> pd.Series:
+    def pull_by_oid(self, oid:str, unix:bool=True) -> pd.Series:
         """Pull single order by user-generated client OID"""
         path = f"orders/{oid}"
         resp = self._request("get", path, signed=True)
-        return pd.Series(resp['data'])
+        try:
+            ser = pd.Series(resp['data'])
+        except KeyError:
+            raise KucoinResponseError(f'No response returned for {oid}')
+        ser.iloc[5:11] = ser.iloc[5:11].astype(float)
+        if not unix:
+            ser.createdAt = pd.to_datetime(ser.createdAt, unit='ms')
+        return ser
