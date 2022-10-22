@@ -92,11 +92,11 @@ Quickstart
       interval="1min",
   )
 
-  # Buy 500 USDT of ETH on the spot market
+  # Buy 500 USDT of ETH at market price on the spot market
   order = client.order(
       symbol="ETH-USDT",
       side="buy",
-      price=500,
+      funds=500,
   )
 
   # Place a 10 minute Good-to-Time margin limit sell order for 1 BTC @ 24,000 USDT
