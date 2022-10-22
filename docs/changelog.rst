@@ -1,19 +1,27 @@
+=========
 Changelog
 =========
 
+-----
 1.4.5
+-----
 Release Date: Unreleased
 
-Futures API support is currently being added. Current releases may be unstable and may lack proper documentation. Explore features at your own risk.
+Futures API support is currently in development. Current releases may be unstable or lack proper documentation. Explore features at your own risk.
+
+Added `mark_price` function for obtaining KuCoin official mark prices.
 
 Quality of Life
 ^^^^^^^^^^^^^^^
-* `pull_by_oid` and `pull_by_cid`: As appropriate, string values are recast to float automatically now. A `unix` boolean argument has been added to both functions. Finally, a 
+* `pull_by_oid` and `pull_by_cid`: As appropriate, string values are recast to float automatically. `unix` boolean argument has been added to both functions. Finally, a 
   `KuCoinResponseError` is now raised if an invalid OID/CID is passed to the argument.
 * `order_history`: With the addition of `pull_by_oid` and `pull_by_cid` as premier live trading endpoints, `order_history`'s primary purpose is for evaluation of trade results.
   As such, consolidated outputs are more often a better view. `consolidated` view will now be the default.
 * `margin_balance`: Where appropriate, columns are now automatically recast from string to float.
+* `get_stats`: Where appropriate, columns are now automatically recast from string to float.
+* `order_history`: Symbols passed to `symbols` argument are no longer case sensitive
 
+-----
 1.4.4
 -----
 Release Date: 2022-10-01
@@ -32,17 +40,19 @@ Bug Fixes
 ^^^^^^^^^
 * `cancel_order`: Fixed error in appending cancelled order ID to list of order IDs when several CID/OID order existed, but one did not.
 
+-----
 1.4.3
 -----
 Release Date: 2022-09-27
 
 Added exception handling for ConnectionError when submitting POST request. This issue was raised due to an idled request session and effected primarily macOS.
 
+-----
 1.4.2
 -----
 Release Date: 2022-09-25
 
-In `ohlcv`, `begin` has been officially deprecated as an argument.
+In `ohlcv`, `begin` argument has officially been deprecated.
 
 Quality of Life
 ^^^^^^^^^^^^^^^
@@ -57,6 +67,7 @@ Quality of Life
 * `symbols`: Reversed previous index column change from `name` to `symbol`. This change will ensure naming consistency between other functions such as OHLCV.
   New index column is `symbol`. Be aware that `name` is the trading pair name and may differ from `symbol`.
 
+-----
 1.4.1
 -----
 Release Date: 2022-09-22
@@ -72,6 +83,7 @@ Quality of Life
 * `order_history`: Changed default for `consolidated` to `False` (previously defaulted to `True`). I expected that consolidated responses would be more
   useful, but found that in live execution, I was consistently setting the argument to `False`.
 
+---------------
 1.4.0 and 1.3.9
 ---------------
 Release Date: 2022-09-21
@@ -106,8 +118,9 @@ Quality of Life
 
 Bugs Fixes
 ^^^^^^^^^^
-* `.orders`: Thanks to @lithium-bot on Github, an issue was corrected with isolated margin order submission.
+* `orders`: Thanks to @lithium-bot on Github, an issue was corrected with isolated margin order submission.
 
+---------------
 1.3.7 and 1.3.8
 ---------------
 Release Date: 2022-09-19
@@ -117,6 +130,7 @@ Rolled changelog entries 1.3.7 and 1.3.8 together as 1.3.7 contained only minor 
 * `recent_orders`: Added `unix` boolean argument. If `unix=True`, datetimes will be returned in unix epochs at millisecond granularity 
 * `order_history`: Added extremely detailed endpoint for obtaining order history infromation. See `.order_history` docstring for full details. 
 
+-----
 1.3.6
 -----
 Release Date: 2022-09-18
@@ -129,6 +143,7 @@ Additional updates:
 * Improved overal documentation
 * Deprecated `.get_outstanding_balance` as it was extraneous once `.margin_balance` was overhauled.
 
+-----
 1.3.5
 -----
 Release Date: 2022-09-18
@@ -147,6 +162,7 @@ Release Date: 2022-09-18
   will now raise a deprecation warning and will be removed from the kucoincli API at some point in the future.
 * `get_marginable_pairs` was officially deprecated. Use `symbols` with `marginable=True` to replicate the deprecated function.
 
+-----
 1.1.0
 -----
 Release Date: 2022-06-08

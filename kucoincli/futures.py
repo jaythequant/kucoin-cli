@@ -3,6 +3,8 @@ import requests
 import functools
 import pandas as pd
 import datetime as dt
+import timedelta as td
+from kucoincli.utils._utils import _parse_date
 from kucoincli.client import BaseClient
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
 
@@ -117,3 +119,51 @@ class FuturesClient(BaseClient):
         path = "status"
         resp = self._request("get", path)
         return resp["data"]
+
+    def ohlcv(
+        self, symbols:str, start:dt.datetime or str, end:dt.datetime or str=None, 
+        interval:str="1day", ascending:bool=True,
+    ):
+        """Obtain historic OHLCV price data for futures contract
+        
+        Parameters
+        ----------
+        symbols : str or list
+
+        start : str or datetime, optional
+
+        end : str or datetime, optional
+
+        interval : str, optional
+            Provide interval granularity for returned data. Default granularity is 1 day. 
+            All possible intervals: `["1min", "5min", "15min", "30min", "1hour", 
+            "2hour", "4hour", "8hour", "12hour", "1day", "1week"]`
+        
+        Returns
+        -------
+        DataFrame
+            Return pandas dataframe with datetime index in ascending order.
+        """
+        granularity = {
+            "1min": 1, "5min": 5, "15min": 15, "30min": 30, "1hour": 60, "2hour": 120,
+            "4hour": 240, "8hour": 480, "12hour": 720, "1day": 1440, "1week": 10080,
+        }
+        
+        base_path = 'kline/query'
+        interval_granularity = granularity[interval]
+
+        start = _parse_date(start) if isinstance(start, str) else start
+        end = _parse_date(end) if isinstance(end, str) else dt.datetime.utcnow()
+
+        symbols = [symbols] if not isinstance(symbols, list) else symbols
+        symbols = ["."+symbol for symbol in symbols if not symbol.startswith(".")]
+        symbols = [symbol.upper() for symbol in symbols]
+
+        for symbol in symbols:
+            path = (
+                base_path + 
+                f"?symbol={symbol}" + 
+                f"&granularity={interval_granularity}" +
+                f"" +
+                f""
+            )

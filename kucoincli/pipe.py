@@ -24,15 +24,6 @@ def pipeline(
     Leverage `pandas`, `sqlalchemy`, and `kucoincli.client` to obtain, format,
     and catalogue OHLCV data in a permanent database. 
 
-    Notes
-    -----
-        * Be aware that KuCoin servers are on UTC time. If this is not accounted for
-        returns may be inaccurate. Returns may be unexpected when using naive
-        datetime objects rather than strings for the `start` or `end` arguments.
-        * This pipeline is a wrapper utilizing the `kucoincli.client` function 
-        `ohlcv`. For details on the underlying data acquisition, reference 
-        the docstring.
-
     Parameters
     ----------
     tickers : str or list
@@ -80,9 +71,18 @@ def pipeline(
         * `replace`: Drop the table before inserting new values.
         * `append`: Insert new values to the existing table.
 
+    Notes
+    -----
+    * Be aware that KuCoin servers are on UTC time. If this is not accounted for
+    returns may be inaccurate. Returns may be unexpected when using naive
+    datetime objects rather than strings for the `start` or `end` arguments.
+    * This pipeline is a wrapper utilizing the `kucoincli.client` function 
+    `ohlcv`. For details on the underlying data acquisition, reference 
+    the docstring.
+
     See Also
     --------
-        `kucoincli.client.ohlcv`
+    * `kucoincli.client.ohlcv`
     """
     client = Client()   # Instantiate an instance of the client
 
