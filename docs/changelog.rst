@@ -9,7 +9,10 @@ Release Date: Unreleased
 
 Futures API support is currently in development. Current releases may be unstable or lack proper documentation. Explore features at your own risk.
 
-Added `mark_price` function for obtaining KuCoin official mark prices.
+New Features
+^^^^^^^^^^^^
+* `mark_price`: Use this function for obtaining KuCoin official mark prices.
+* `consumer`: Added basic websocket consumer processing websocket message and handling keep alive pings
 
 Quality of Life
 ^^^^^^^^^^^^^^^

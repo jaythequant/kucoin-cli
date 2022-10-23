@@ -1,6 +1,7 @@
 import time
 import json
-from pprint import pprint
+import logging
+import asyncio
 from kucoincli.utils._utils import _str_to_list
 
 
@@ -90,6 +91,7 @@ class Socket(object):
             * `funding`:
             * `loan`:
             * `stoporder`:
+            * `match`:
 
         ticker : None or str or list, optional
             Many endpoints require the user to specify a ticker or list of
@@ -166,3 +168,28 @@ class Socket(object):
             else:  
                 channels[f"{endpoint}{idx}"] = f"{self.endpoints[endpoint]}{var}"
         del channels[endpoint]
+
+    async def consumer(self):
+        """Consume websocket messages and handle keep alive pings"""
+        keep_waiting = True
+        while keep_waiting:
+            last_ping = time.time()
+            if time.time() - last_ping > self.timeout:
+                await self._send_ping()
+            try:
+                evt = await asyncio.wait_for(self.socket.recv(), timeout=self.timeout)
+            except asyncio.TimeoutError:
+                logging.debug(f"No message in {self.timeout} seconds")
+                await self._send_ping()
+            except asyncio.CancelledError:
+                logging.debug("Cancelled error thrown")
+                await self._send_ping()
+            else:
+                # Handle any data manipulations that need to occur
+                resp = json.loads(evt)
+                return resp
+
+    async def _send_ping(self):
+        """Sends a ping message to socket connection"""
+        msg = {"id": str(int(time.time() * 1000)), "type": "ping"}
+        await self.socket.send(json.dumps(msg))
