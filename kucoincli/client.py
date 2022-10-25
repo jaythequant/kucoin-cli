@@ -3,6 +3,8 @@ import requests
 import base64, hashlib, hmac
 import json
 import math
+import aiohttp
+import asyncio
 import calendar
 import warnings
 import logging
@@ -81,6 +83,10 @@ class BaseClient(Socket):
         # Below error is raised when session idles for to long (typically only on macOS)
         except requests.exceptions.ConnectionError:
             response = self.session.request(method, uri, data=payload)
+        except requests.exceptions.ReadTimeout:
+            logging.debug(f'ReadTimeout Error Raised. Sleeping for 30 seconds')
+            time.sleep(30)
+            response = self.session.request(method, uri, data=payload)
 
         if response.status_code == 200:
             pass
@@ -98,10 +104,11 @@ class BaseClient(Socket):
                     self.RETRIES = 1
                     raise KucoinResponseError("Max recursion depth exceeded. Server response not received")
         elif response.status_code == 401:
+            logging.info(response)
             logging.info(response.json())
             raise KucoinResponseError("Invalid API Credentials")
         else:
-            logging.info(response.json())
+            logging.info(response)
             raise KucoinResponseError(f"Response Error Code: <{response.status_code}>")
 
         self.RETRIES = 1
@@ -152,7 +159,6 @@ class BaseClient(Socket):
 
 
 class Client(BaseClient):
-
     """KuCoin REST API wrapper -> https://docs.kucoin.com/#general
 
     Parameters
@@ -421,7 +427,7 @@ class Client(BaseClient):
 
     def ohlcv(
         self, tickers:str or list, start:dt.datetime or str, end:dt.datetime or str=None, 
-        interval:str="1day", ascending:bool=True, warning:bool=True,
+        interval:str="1day", ascending:bool=True, warn:bool=True,
     ) -> pd.DataFrame:
         """Query historic OHLC(V) data for a ticker or list of tickers 
 
@@ -445,7 +451,7 @@ class Client(BaseClient):
         ascending : bool, optional
             If `ascending=True`, dataframe will be returned in standard order. If `False`,
             return data in reverse chronological.
-        warning : bool, optiona
+        warn : bool, optiona
             Toggle whether function warns user about excessive API calls
 
         Returns
@@ -481,7 +487,7 @@ class Client(BaseClient):
 
         dfs = []
 
-        if warning:
+        if warn:
             num_calls = len(unix_ranges) * len(tickers)
             if num_calls > 20:
                 warnings.warn(f"""
@@ -527,14 +533,14 @@ class Client(BaseClient):
                     self.session.close()
                     time.sleep(300) # Ten minute time out
                     self.session = self._session()
-                    resp = self.session._request("get", path)
+                    resp = self._request("get", path)
                 except requests.exceptions.ReadTimeout as e:
                     logging.info("Request.exceptions.ReadTimeout. 5 minute timeout")
                     logging.debug(e, exc_info=True)
                     self.session.close()
                     time.sleep(300) # Ten minute time out
                     self.session = self._session()
-                    resp = self.session._request("get", path)
+                    resp = self._request("get", path)
             if len(df_pages) > 1:
                 dfs.append(pd.concat(df_pages, axis=0))
             else:
@@ -1078,7 +1084,7 @@ class Client(BaseClient):
             resp = self._request("post", path, signed=is_signed)
         return resp["data"]
 
-    def get_server_time(self, format:str=None, unix=True) -> int:
+    def get_server_time(self, unix=True) -> int:
         """Return server time in UTC time to millisecond granularity
 
         Notes
@@ -1091,9 +1097,6 @@ class Client(BaseClient):
         
         Parameters
         ----------
-        format : str, optional
-            If `format='unix'`, return the time as UTC Unix-epoch with millisecond accuracy. If
-            `format='datetime'` [default] return a datetime object in UTC time.
         unix : bool, optional
             If `unix=True`, return server time as Unix epoch with millisecond accuracy. Else,
             return datetime object.
@@ -1103,12 +1106,10 @@ class Client(BaseClient):
         int or datetime.datetime
             Returns time to the millisecond either as a UNIX epoch or datetime object
         """
-        if format:
-            warnings.warn('`format` argument will be deprecated in a future release. Please use `unix` argument')
         path = "timestamp"
         resp = self._request("get", path)
         resp = resp["data"]
-        if format == "datetime" or not unix:
+        if not unix:
             resp = dt.datetime.utcfromtimestamp(
                 int(resp) / 1000
             )
@@ -1948,3 +1949,97 @@ class Client(BaseClient):
         if resp['code'] != '200000':
             raise KucoinResponseError(resp["msg"])
         return pd.Series(resp['data'])
+
+
+class AsyncClient(BaseClient):
+    """Asynchronous version of the KuCoin REST client
+    
+    KuCoin REST API wrapper -> https://docs.kucoin.com/#general
+
+    Parameters
+    ----------
+    api_key : str, optional
+        API key generated upon creation of API endpoint on kucoin.com. If no API key is given,
+        the user cannot access functions requiring account level authorization, but can access
+        endpoints that require general auth such as general market data.
+    api_secret : str, optional
+        Secret API sequence generated upon create of API endpoint on kucoin.com. 
+        See api_key docs for info on optionality of 
+        variable
+    api_passphrase : str, optional
+        User created API passphrase. Passphrase is created by the user during API setup on 
+        kucoin.com. See api_key docs for info on optionality of variable
+    """
+
+    def __init__(self, api_key:str=None, api_secret:str=None, api_passphrase:str=None, loop=None):
+
+        self.loop = loop if loop else asyncio.get_event_loop()
+        BaseClient.__init__(self, api_key, api_secret, api_passphrase)
+
+        self.logger = logging.getLogger(__name__)
+
+        self.API_KEY = api_key
+        self.API_SECRET = api_secret
+        self.API_PASSPHRASE = api_passphrase
+        self.API_URL = self.REST_API_URL
+
+    @classmethod
+    async def create(cls, api_key, api_secret, api_passphrase, loop=None):
+
+        self = cls(api_key, api_secret, api_passphrase, loop)
+
+        try:
+            await self.get_server_time() # Ping server to check connectivity
+            return self
+        except:
+            await self.close_connection()
+            print('error')
+            raise
+
+    def _session(self) -> aiohttp.ClientSession:
+        headers = {
+            "Accept": "application/json",
+            "User-Agent": "kucoin-cli",
+            "Content-Type": "application/json",
+        }
+        session = aiohttp.ClientSession(
+            loop=self.loop,
+            headers=headers
+        )
+        return session
+
+    async def close_connection(self):
+        if self.session:
+            assert self.session
+            await self.session.close()
+
+    async def get_server_time(self, unix=True) -> int:
+        """Return server time in UTC time to millisecond granularity
+
+        Notes
+        -----
+        This function will return the KuCoin official server time in UTC as unix epoch.
+        Returned time is an integer value representing time to millisecond precision. 
+        This function should be used to sync client and server time as orders submitted 
+        with a timestamp over 5 seconds old will be rejected by the server. In some cases,
+        client time can lag server time resulting in the server rejected commands as stale.
+        
+        Parameters
+        ----------
+        unix : bool, optional
+            If `unix=True`, return server time as Unix epoch with millisecond accuracy. Else,
+            return datetime object.
+        
+        Returns
+        -------
+        int or datetime.datetime
+            Returns time to the millisecond either as a UNIX epoch or datetime object
+        """
+        path = "timestamp"
+        resp = self._request("get", path)
+        resp = resp["data"]
+        if not unix:
+            resp = dt.datetime.utcfromtimestamp(
+                int(resp) / 1000
+            )
+        return resp

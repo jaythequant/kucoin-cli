@@ -3,9 +3,19 @@ Changelog
 =========
 
 -----
-1.4.5
+1.4.6
 -----
 Release Date: Unreleased
+
+Other
+^^^^^
+* `ohlcv`: Changed `warning` argument to `warn`. This is more in-line with pandas/numpy warning arguments.
+* `get_server_time`: Officially deprecated `format` argument in favor of `unix`
+
+-----
+1.4.5
+-----
+Release Date: 2022-10-23
 
 Futures API support is currently in development. Current releases may be unstable or lack proper documentation. Explore features at your own risk.
 

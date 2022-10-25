@@ -3,7 +3,7 @@ import setuptools
 with open("README.rst", "r", encoding="utf-8") as fh:
     long_description = fh.read()
 
-version = "1.4.5"
+version = "1.4.6"
 
 setuptools.setup(
     name="kucoin-cli",
