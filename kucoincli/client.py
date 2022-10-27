@@ -78,8 +78,12 @@ class BaseClient(Socket):
 
         try:
             response = self.session.request(method, uri, data=payload)
-        # Below error is raised when session idles for to long (typically only on macOS)
         except requests.exceptions.ConnectionError:
+            # Error is raised when session idles for to long (typically only on macOS)
+            response = self.session.request(method, uri, data=payload)
+        except requests.exceptions.ReadTimeout:
+            # Error is raised during extended scraping sessions (requires long time out)
+            time.time(600)
             response = self.session.request(method, uri, data=payload)
 
         if response.status_code == 200:
@@ -210,12 +214,38 @@ class Client(BaseClient):
 
     def subusers(self) -> pd.DataFrame:
         """Obtain a list of sub-users"""
+        # Is this redundant to get_sub_accounts?
         path = "sub/user"
         resp = self._request("get", path, signed=True)
         df = pd.DataFrame(resp["data"])
         if df.empty:
             raise KucoinResponseError("No sub-users found")
         return df
+
+    def create_sub_account(self, password, remarks, sub_name) -> dict:
+        """Create a sub-user account to the user's master account"""
+        pass
+
+    def obtain_sub_api(self, sub_name) -> dict:
+        """Obtain a spot trading API for a specified sub-account"""
+        pass
+
+    def create_sub_api(self, sub_name) -> dict:
+        """Create a spot trading API key for a named sub account"""
+        pass
+
+    def delete_sub_api(self, sub_name) -> dict:
+        """Delete a spot trading API key attached to a named sub-account"""
+        pass
+
+    def get_sub_account_balance(self, sub_name) -> dict:
+        """Obtain sub-account balances across main, trade and margin accounts"""
+        # This will get by sub_name + get all sub account balances aggregated
+        pass
+
+    def update_sub_api(self, sub_name) -> dict: 
+        """Update a pre-existing sub-account spot trading API"""
+        pass
 
     def accounts(
         self, currency:str or list=None, type:str or list=None, balance:float=None, id:str=None,
@@ -269,14 +299,14 @@ class Client(BaseClient):
         return df
 
     def create_account(self, currency:str, type:str) -> dict:
-        """Create a new sub-account of account type `type` for currency `currency`.
+        """Create a new account of type `type` for currency `currency`.
 
         Parameters
         ----------
         currency : str 
             Currency account type to create (e.g., BTC).
         type: str 
-            Type of account to create. Options: main, trade, margin.
+            Type of account to create. Available account types: `['main', 'trade', 'margin']`
 
         Returns
         -------
@@ -288,16 +318,22 @@ class Client(BaseClient):
         resp = self._request("post", path, signed=True, data=data)
         return resp
 
-    def get_subaccounts(self, id:str or None=None) -> dict:
+    def get_sub_accounts(self, id:str=None) -> dict:
         """Returns account details for all sub-accounts. Requires Trade authorization"""
-        path = f"sub-accounts"
-        if id:
-            path = f"path/{id}"
-        url = self._request("get", path, signed=True)
-        response = self.session.request("get", url)
-        resp = response["data"]
-        if not resp:
+        path = f"sub-accounts" if not id else f"path/{id}"
+        resp = self._request("get", path, signed=True)
+        if not resp['data']:
             raise KucoinResponseError("No sub-accounts found")
+        return resp
+
+    def account_ledgers(self):
+        """Obtain deposit and withdrawal history for all accounts"""
+        pass
+
+    def user_info(self) -> dict:
+        """Obtain user info including number of subaccounts and trading level"""
+        path = "user-info"
+        resp = self._request("get", path, signed=True)
         return resp
 
     def recent_orders(self, id:str=None, unix:bool=False, page:int=1, pagesize:int=500) -> pd.DataFrame:
@@ -353,6 +389,14 @@ class Client(BaseClient):
             if not unix:
                 df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
         return df
+
+    def check_transferable(self) -> dict:
+        """Get transferrable balance of specified currency in main, trade or margin accounts"""
+        pass
+
+    def sub_account_transfer(self) -> dict:
+        """Transfer to or from master account to sub-accounts"""
+        pass
 
     def transfer(
         self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None,
@@ -497,44 +541,26 @@ class Client(BaseClient):
 
             df_pages = []   # List for individual df returns from paganated values
             for path in paths:
-                try:
-                    resp = self._request("get", path)
-                    if resp["code"] == '400100': # Handle invalid trading pair response
-                        raise KucoinResponseError(f"Pair not recognized. Is {ticker} a valid trading pair?")
-                    # If we receive a valid response code, but no data, then we have reached the end of the timeseries
-                    if resp["code"] == '200000' and not resp["data"]:
-                        break
-                    df = pd.DataFrame(resp["data"])
-                    df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
-                    df = df.rename(
-                        columns={
-                            0: "time",
-                            1: "open",
-                            2: "close",
-                            3: "high",
-                            4: "low",
-                            5: "volume",
-                            6: "turnover",
-                        }
-                    ).set_index("time")
-                    df_pages.append(df.astype(float))
-                # except KeyError as e:
-                #     logging.debug(f"End of timeseries reached for {ticker}")
-                #     break
-                except requests.exceptions.ConnectionError as e:
-                    logging.info("ConnectionError raised. 5 minute timeout.")
-                    logging.debug(e, exc_info=True)
-                    self.session.close()
-                    time.sleep(300) # Ten minute time out
-                    self.session = self._session()
-                    resp = self.session._request("get", path)
-                except requests.exceptions.ReadTimeout as e:
-                    logging.info("Request.exceptions.ReadTimeout. 5 minute timeout")
-                    logging.debug(e, exc_info=True)
-                    self.session.close()
-                    time.sleep(300) # Ten minute time out
-                    self.session = self._session()
-                    resp = self.session._request("get", path)
+                resp = self._request("get", path)
+                if resp["code"] == '400100': # Handle invalid trading pair response
+                    raise KucoinResponseError(f"Pair not recognized. Is {ticker} a valid trading pair?")
+                # If we receive a valid response code, but no data, then we have reached the end of the timeseries
+                if resp["code"] == '200000' and not resp["data"]:
+                    break
+                df = pd.DataFrame(resp["data"])
+                df[0] = pd.to_datetime(df[0], unit="s", origin="unix")
+                df = df.rename(
+                    columns={
+                        0: "time",
+                        1: "open",
+                        2: "close",
+                        3: "high",
+                        4: "low",
+                        5: "volume",
+                        6: "turnover",
+                    }
+                ).set_index("time")
+                df_pages.append(df.astype(float))
             if len(df_pages) > 1:
                 dfs.append(pd.concat(df_pages, axis=0))
             else:
@@ -1215,12 +1241,32 @@ class Client(BaseClient):
         Returns
         -------
         dict
-            JSON dict with order execution details
+            JSON dict with order execution details. See example below:
+
+            {
+                code: '200000',
+                data: {
+                    'side': 'buy',
+                    'symbol': 'ETH-USDT',
+                    'type': 'limit',
+                    'clientOid': 16667957483412,
+                    'size': 0.0005,
+                    'price': 900,
+                    'hidden': False,
+                    'postOnly': False,
+                    'iceberg': False,
+                    'timeInForce': 'IOC',
+                    'cancelAfter': None,
+                    'remark': None,
+                    'stp': None,
+                    'orderId': '635948e592d8ed0001929223'
+                }
+             
+            {
         """
-        if price:
-            type = "limit"
-        if visible_size:
-            iceberg = True
+        # Add stop-loss feature to function
+        type = 'limit' if price else type
+        iceberg = True if visible_size else iceberg
         if not size and not funds:
             raise ValueError("Must specify either `size` or `funds`")
         if size and funds:
@@ -1228,9 +1274,10 @@ class Client(BaseClient):
         if type == "limit" and funds: 
             raise ValueError("Limit orders must use `size` argument")
         path = "orders"
-        data = {"side": side, "symbol": symbol, "type": type}
+        data = {"side": side, "symbol": symbol.upper(), "type": type}
+        order_details = data # This initialization is just to put side/symbol/type at top
+        order_details['margin'] = margin
         data["clientOid"] = oid if oid else int(time.time() * 10000)
-
         if size:
             data["size"] = size
         if funds and type == "market":
@@ -1244,17 +1291,22 @@ class Client(BaseClient):
             data["hidden"] = hidden
             data["postOnly"] = postonly
             data["iceberg"] = iceberg
-            data["timeInForce"] = tif
+            data["timeInForce"] = tif.upper()
             if timeout:
                 data["timeInForce"] = "GTT"
                 data["cancelAfter"] = timeout
+            else:
+                data['cancelAfter'] = None
             if iceberg:
                 data["visibleSize"] = visible_size
-        if remark:
-            data["remark"] = remark
-        if stp:
-            data["stp"] = stp
+        data["remark"] = remark
+        data['stp'] = stp
         resp = self._request("post", path, signed=True, data=data)
+        order_details.update(data)
+        if resp['code'] == '200000':
+            resp['data'].update(order_details)
+        else:
+            resp['data'] = order_details
         return resp
 
     def debtratio(self) -> float:
@@ -1557,15 +1609,54 @@ class Client(BaseClient):
         return resp["data"]
 
     def lend(self, currency:str, size:float, interest:float, term:int):
-        """Post lend order to KuCoin lending markets"""
-        data = {"currency": currency, "size": size, "dailyIntRate": interest, "term": term}
+        """Post lend order to KuCoin lending markets
+        
+        Parameters
+        ----------
+        currency : str
+            Specify currency to borrow
+        size : float
+            Total lend size
+        interest : float
+            Specify daily interest rate as decimal value (i.e., 0.02% should be specified as 0.0002)
+        term : int
+            Number of days to lock in lending terms. Units in days.
+
+        Returns
+        -------
+        dict
+            Returns dictionary with lend order details.
+
+            {
+                'code': '200000',
+                'data': {
+                    'currency': 'ETH',
+                    'size': 1,
+                    'dailyIntRate': 0.0002,
+                    'term': 7
+                }
+            }
+        """
+        data = {"currency": currency.upper(), "size": size, "dailyIntRate": interest, "term": term}
         path = "margin/lend"
         resp = self._request("post", path, data=data, signed=True)
+        if resp['code'] == '200000':
+            resp['data'].update(data)
+        else:
+            resp['data'] = data
         return resp
+
+    def cancel_lend_order(self) -> dict:
+        """Cancel all active lend orders or lend specific lend orders by ID"""
+        pass
+
+    def set_auto_lend(self) -> dict: 
+        """Set specified currency to autolend"""
+        pass
 
     def borrow(
         self, currency:str, size:float, maxrate:float=None, 
-        type:str="IOC", term:int or list or None=None,
+        type:str="IOC", term:int or list=None,
     ) -> dict:
         """Post borrow request to KuCoin lending markets
         
@@ -1596,16 +1687,32 @@ class Client(BaseClient):
         dict
             Returns dictionary with order details. Use orderId with 
             `.get_borrow_order` to obtain order details.
+
+            {
+                'code': '103000',
+                'msg': 'Exceed the borrowing limit, the remaining borrowable amount is: 0.19ETH',
+                'data': {
+                    'currency': 'ETH',
+                    'type': 'IOC',
+                    'size': 1,
+                    'maxRate': None,
+                    'term': None
+                }
+            }
         """
-        data = {"currency": currency, "type": type, "size": size}
-        if maxrate:
-            data["maxRate"] = maxrate
+        data = {"currency": currency.upper(), "type": type.upper(), "size": size, "maxRate": maxrate}
         if term:
             term = [term] if isinstance(term, int) else term
             term = [str(period) for period in term]
             data["term"] = ",".join(term)
+        else:
+            data["term"] = None
         path = "margin/borrow"
         resp = self._request("post", path, data=data, signed=True)
+        if resp['code'] == '200000':
+            resp['data'].update(data)
+        else:
+            resp['data'] = data
         return resp
 
     def cancel_order(
