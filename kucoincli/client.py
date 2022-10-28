@@ -2043,3 +2043,36 @@ class AsyncClient(BaseClient):
                 int(resp) / 1000
             )
         return resp
+
+    def create_sub_account(self, password, remarks, sub_name) -> dict:
+        """Create a sub-user account to the user's master account"""
+        pass
+
+    def obtain_sub_api(self, sub_name) -> dict:
+        """Obtain a spot trading API for a specified sub-account"""
+        pass
+
+    def create_sub_api(self, sub_name) -> dict:
+        """Create a spot trading API key for a named sub account"""
+        pass
+
+    def delete_sub_api(self, sub_name) -> dict:
+        """Delete a spot trading API key attached to a named sub-account"""
+        pass
+
+    def get_sub_account_balance(self, sub_name) -> dict:
+        """Obtain sub-account balances across main, trade and margin accounts"""
+        # This will get by sub_name + get all sub account balances aggregated
+        pass
+
+    def update_sub_api(self, sub_name) -> dict: 
+        """Update a pre-existing sub-account spot trading API"""
+        pass
+
+    def check_transferable(self) -> dict:
+        """Get transferrable balance of specified currency in main, trade or margin accounts"""
+        pass
+
+    def sub_account_transfer(self) -> dict:
+        """Transfer to or from master account to sub-accounts"""
+        pass
