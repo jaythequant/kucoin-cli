@@ -222,31 +222,6 @@ class Client(BaseClient):
             raise KucoinResponseError("No sub-users found")
         return df
 
-    def create_sub_account(self, password, remarks, sub_name) -> dict:
-        """Create a sub-user account to the user's master account"""
-        pass
-
-    def obtain_sub_api(self, sub_name) -> dict:
-        """Obtain a spot trading API for a specified sub-account"""
-        pass
-
-    def create_sub_api(self, sub_name) -> dict:
-        """Create a spot trading API key for a named sub account"""
-        pass
-
-    def delete_sub_api(self, sub_name) -> dict:
-        """Delete a spot trading API key attached to a named sub-account"""
-        pass
-
-    def get_sub_account_balance(self, sub_name) -> dict:
-        """Obtain sub-account balances across main, trade and margin accounts"""
-        # This will get by sub_name + get all sub account balances aggregated
-        pass
-
-    def update_sub_api(self, sub_name) -> dict: 
-        """Update a pre-existing sub-account spot trading API"""
-        pass
-
     def accounts(
         self, currency:str or list=None, type:str or list=None, balance:float=None, id:str=None,
     ) -> pd.DataFrame or pd.Series:
@@ -389,14 +364,6 @@ class Client(BaseClient):
             if not unix:
                 df.createdAt = pd.to_datetime(df.createdAt, unit="ms")
         return df
-
-    def check_transferable(self) -> dict:
-        """Get transferrable balance of specified currency in main, trade or margin accounts"""
-        pass
-
-    def sub_account_transfer(self) -> dict:
-        """Transfer to or from master account to sub-accounts"""
-        pass
 
     def transfer(
         self, currency:str, source_acc:str, dest_acc:str, amount:float, oid:str=None,
@@ -1307,6 +1274,7 @@ class Client(BaseClient):
             resp['data'].update(order_details)
         else:
             resp['data'] = order_details
+            resp['data'].update({'orderId': None})
         return resp
 
     def debtratio(self) -> float:
@@ -1473,7 +1441,18 @@ class Client(BaseClient):
     def get_outstanding_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50
     ) -> pd.DataFrame or pd.Series:
-        """Obtain record of outstanding loans"""
+        """Obtain record of all oustanding loans including those unfilled, partially filled and uncanceled
+        
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
         if pagesize > 50:
             raise ValueError("Maximum `pagesize` is 50")
         concat_paginated = False
@@ -1506,7 +1485,18 @@ class Client(BaseClient):
     def get_lending_history(
         self, currency:str or list=None, page:int=None, pagesize:int=50
     ) -> pd.DataFrame or pd.Series:
-        """Get historic details for cancelled or fully filled lend orders"""
+        """Get historic details for cancelled or fully filled lend orders
+        
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
         if pagesize > 50:
             raise ValueError("Maximum `pagesize` is 50")
         concat_paginated = False
@@ -1539,7 +1529,18 @@ class Client(BaseClient):
     def get_active_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50
     ) -> pd.DataFrame or pd.Series:
-        """Access order which are fully filled and oustanding"""
+        """Access order which are fully filled and oustanding
+        
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
         if pagesize > 50:
             raise ValueError("Maximum `pagesize` is 50")
         concat_paginated = False
@@ -1572,7 +1573,18 @@ class Client(BaseClient):
     def get_settled_loans(
         self, currency:str or list=None, page:int=None, pagesize:int=50
     ) -> pd.DataFrame or pd.Series:
-        """Access order which are fully filled and oustanding"""
+        """Access order which are fully filled and oustanding
+
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
         if pagesize > 50:
             raise ValueError("Maximum `pagesize` is 50")
         concat_paginated = False
@@ -1646,13 +1658,139 @@ class Client(BaseClient):
             resp['data'] = data
         return resp
 
-    def cancel_lend_order(self) -> dict:
-        """Cancel all active lend orders or lend specific lend orders by ID"""
-        pass
+    def cancel_lend_order(self, ids:str or list=None) -> dict:
+        """Cancel all or specific active lend orders via currency target or ID
+        
+        Parameters
+        ----------
+        ids : str or list, optional
+            Specify a single ID or list of IDs to be cancelled. IDs can be obtained via
+            `get_oustanding_loans`. If no IDs are specified [default], then ALL unfilled,
+            active loands will be cancelled.
 
-    def set_auto_lend(self) -> dict: 
-        """Set specified currency to autolend"""
-        pass
+        Returns
+        -------
+        dict
+            Return a dictionary of successfully cancelled loans and loan IDs that raised 
+            errors.
+
+            {
+                '200000': 
+                [
+                    '635948e592d8ed0001929223',
+                    '5da59f5ef943c033b2b643e4,
+                ],
+                'errors': []
+            }
+
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
+        path = 'margin/lend/'
+
+        if ids:
+            ids = [ids] if not isinstance(ids, (tuple, list)) else ids
+        else:
+            loans = self.get_outstanding_loans()
+            # Filter to onyl unfilled loans
+            try:
+                ids = loans[loans['filledSize'].astype(float) == 0].index
+            except KeyError:
+                ids = []
+        
+        response = {'200000': [], 'error': []}
+
+        for id in ids:
+            p = path + id
+            resp = self._request('delete', p, signed=True)
+            if resp['code'] == '200000':
+                response['200000'].append(id)
+            else:
+                response['error'].append(resp)
+        
+        return response
+
+    def set_auto_lend(
+        self, currency:str, enable:bool, reserve_size:float=0, min_int:float=None,
+        term:int=7,
+    ) -> dict: 
+        """Set specified currency to autolend or disable existing autolend feature
+
+        Before leveraging the autolend features check out the documentation here:
+        https://docs.kucoin.com/#set-auto-lend
+        
+        Parameters
+        ----------
+        currency : str
+            Specify currency on which to set autolend features (e.g., BTC)
+        enable : bool
+            Toggle autolend feature on or off (e.g. `enable=True`, sets autolend to on)
+        reserve_size : float, optional
+            Add a reserve size which will not be lent out automatically. E.g., if you have
+            a reserve size set to 0.1 which 1.0 BTC in your account, only 0.9 will be
+            lent automatically.
+        daily_int : float, optional
+            Set a minimum daily interest rate that you are willing to lend at. Note that
+            this argument will default to the minimum current market rate (as obtainable
+            through `lending_rate` function) if not specified. It is highly recommended
+            that user's specify their own target rate.
+        term : int, optional
+            Lending term in days that assets will be offered. Note that user's may receive
+            assets back in their account earlier than the term if the borrower repays their
+            debt early. Term must be one of `[7, 14, 28]`.
+
+        Returns
+        -------
+        dict
+            Return dictionary with confirmation code and data related to autolend terms:
+
+            {
+                'code': '200000',
+                'data':
+                {
+                    'currency': 'BTC',
+                    'isEnable': False,
+                    'retainSize': 0,
+                    'dailyIntRate': None,
+                    'term': 7
+                }
+            }
+
+        See Also
+        --------
+        * `lend`: Place a new lending offer on the market.
+        * `lending_rates`: Check outstanding loan offer rates and terms for specified currency.
+        * `set_auto_lend`: Toggle auto-lending features for specified currency
+        * `get_outstanding_loans`: Return DataFrame with details of all loans filled, unfilled
+          and uncancelled.
+        * `get_active_loans`: Return DataFrame with details on active, outstanding loans.
+        * `get_settled_loans`: Return DataFrame with details on unsettled (inactive) loans.
+        """
+        currency = currency.upper()
+        if enable and not min_int:
+            # Check current minimum rate that others are lending currently. Assume this 
+            # approximates a "market" rate.
+            min_int = self.lending_rate(currency).dailyIntRate.min()
+        if term not in [7, 14, 28]:
+            raise ValueError(f'Term length must be 7, 14, or 28 days. Your input: {term}')
+        path = 'margin/toggle-auto-lend'
+        data = {
+            'currency': currency,
+            'isEnable': enable,
+            'retainSize': reserve_size,
+            'dailyIntRate': min_int,
+            'term': term,
+        }
+        resp = self._request('post', path, signed=True, data=data)
+        resp['data'] = data
+        return resp
 
     def borrow(
         self, currency:str, size:float, maxrate:float=None, 
@@ -1750,8 +1888,17 @@ class Client(BaseClient):
 
         Response
         --------
-        list
-            List of cancelled order IDs
+        dict
+            Return dictionary with list of successfully cancelled order IDs and error responses
+
+            {
+                '200000': 
+                [
+                    '635948e592d8ed0001929223',
+                    '5da59f5ef943c033b2b643e4,
+                ],
+                'errors': []
+            }
         """
         if not symbols and not cid and not oid:
             raise ValueError("Must specify one of `symbols`, `id`, or `oid`")
@@ -1781,7 +1928,7 @@ class Client(BaseClient):
                 path = f"orders?symbol={symbol}&tradeType={type}"
                 cancellations.append(path)
 
-        responses = []
+        responses = {'200000': [], 'error': []}
         for path in cancellations:
             resp = self._request("delete", path, signed=True)
             if resp["code"] == '200000':
@@ -1790,13 +1937,13 @@ class Client(BaseClient):
                     r = resp['data'].get("cencelledOrderId")
                 r = [r] if isinstance(r, str) else r
                 if r:
-                    responses = responses + r
+                    responses['200000'] += r
             else:
                 logging.error(
                     "Order cancellation failure: " +
                     resp["msg"]
                 )
-                pass
+                responses['error'].append(resp)
 
         return responses
 

@@ -5,18 +5,41 @@ Changelog
 -----
 1.4.6
 -----
-Release Date: Unreleased
+Release Date: 2022-10-28
+
+**POTENTIALLY BREAKING CHANGE**
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+* `cancel_order`: Previously `cancel_order` returned a list of order IDs that were cancelled and logged an error message when an order failed to cancel. This function will now return a dictionary
+  with the following format:
+
+  .. code-block:: python
+
+    {
+      '200000': 
+      [
+          '635948e592d8ed0001929223',
+          '5da59f5ef943c033b2b643e4,
+      ],
+      'errors': []
+    }
+
+**If you have a system that performs validation on orders cancellations based on the `cancel_order` response it will break**.
 
 Futures and Async classes were moved from main branch to dev branch. These features may be in development for some time and as such they have been removed.
 
+New Features
+^^^^^^^^^^^^
+* `cancel_lend_order`: Cancel outstanding lending orders across your account. Alternatively, cancel a single order or list of orders by tradeId.
+* `set_auto_lend`: Toggle autolend features on or off for specified currency. Check out `the auto lend documentation <https://docs.kucoin.com/#set-auto-lend>`_ **before** you use this feature.
+
 Quality of Life
 ^^^^^^^^^^^^^^^
-* `order`: Significant improvements were made to `order` responses. By default, KuCoin order response returns contain a status code and either tradeId or
-  msg field (dependent on whether the trade was accepted or rejected). `order` will now return the same dictionary object with the same information, but also
-  includes detailed order parameters. This change will not break any legacy systems as response will still come in the same format, simply more information has
-  been added. See the docstring for an example reponse.
-* `borrow`: In the same vein as `order`'s improved response outlined above, `borrow` has also received improved response features. See the docstring for an example response.
-* `lend`: Lend has also received updated response features. See the docstring for an example response.
+* `order`: Significant improvements were made to `order` responses. By default, KuCoin order confirmations contain only a status code and either a tradeId or
+  message field (dependent on whether the trade was accepted or rejected). `order` will now return the same confirmation with additional information surrounding
+  order parameters. This change will not break any legacy systems as the response will still come in the same format. Simply more information has been added. See 
+  the docstring for an example of what new reponses look like.
+* `borrow`: In the same vein as `order`, improved response's have been added to `borrow`. For an example, check the docstrings.
+* `lend`: Lend has also received updated response features. See the docstring for an example.
 
 Bug Fixes
 ^^^^^^^^^
