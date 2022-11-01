@@ -26,7 +26,7 @@ def _parse_date(date_string, as_unix=False):
     return dt_obj
 
 
-def _parse_interval(begin, end, interval) -> list:
+def _parse_interval(begin, end, interval, max_bars=1500) -> list:
     """
     Parse date range for consumption by get_kline_history function
         in client when obtaining paganated data.
@@ -39,8 +39,6 @@ def _parse_interval(begin, end, interval) -> list:
         and ending date ranges. These ranges will appropriately paganate
         the kline data returned from get_kline_data call in Client
     """
-    max_bars = 1500
-
     _, num, inc = re.split('(\d+)', interval)  # Parse interval
     if inc == "week":   # Special handling for week increment
         num = 7

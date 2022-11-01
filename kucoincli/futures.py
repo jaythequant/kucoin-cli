@@ -1,10 +1,12 @@
 import logging
 import requests
 import functools
+import time
+import numpy as np
 import pandas as pd
 import datetime as dt
 import timedelta as td
-from kucoincli.utils._utils import _parse_date
+from kucoincli.utils._utils import _parse_date, _parse_interval
 from kucoincli.client import BaseClient
 from kucoincli.utils._kucoinexceptions import KucoinResponseError
 
@@ -57,7 +59,14 @@ class FuturesClient(BaseClient):
         session.request = functools.partial(session.request, timeout=10)
         return session
 
-    def account_overview(self, currency='XBT'):
+    @staticmethod
+    def __format_contract_list(contracts):
+        """Clean up formatting for list of contracts"""
+        contracts = [contracts] if not isinstance(contracts, (list, tuple)) else contracts
+        contracts = [contract.upper() for contract in contracts]
+        return contracts
+
+    def account_overview(self, currency:str='XBT') -> pd.Series:
         """Pull general account overview for futures trading"""
         path = f'account-overview?currency={currency}'
         resp = self._request('get', path, signed=True)
@@ -65,13 +74,54 @@ class FuturesClient(BaseClient):
         ser.iloc[0:-1] = ser.iloc[0:-1].astype(float)
         return ser
 
-    def active_contracts(self, contracts=None):
-        """Obtain list of active contracts"""
+    def all_contracts(self, contracts:str or list =None) -> pd.DataFrame:
+        """Obtain list of active contracts with relevant trade details
+        
+        Parameters
+        ----------
+        contracts : str or list, optional
+            Return only specified contract or contracts.
+
+        Returns
+        -------
+        DataFrame or Series
+            Return contract details for all active contracts as a pandas 
+            DataFrame (for multiple contracts) or Series (for a single contract).
+        """
         path = "contracts/active"
         resp = self._request('get', path)
         df = pd.DataFrame(resp['data'])
         df = df.set_index('symbol')
-        return df
+        if contracts:
+            contracts = self.__format_contract_list(contracts)
+            df = df[df.index.isin(contracts)]
+        return df.squeeze()
+
+    def get_stats(self, contract:str, unix:bool=True) -> pd.Series:
+        """Query API for OHLC(V) figures and assorted statistics on specified pair
+
+        Parameters
+        ----------
+        contract: str 
+            contract to obtain details for (e.g., XBTUSDM)
+        
+        Returns
+        -------
+        Series
+            Returns pandas Series containing details for target currency
+        """
+        path = f'ticker?symbol={contract.upper()}'
+        resp = self._request('get', path)
+        try:
+            ser = pd.Series(resp['data'])
+        except KeyError:
+            raise KucoinResponseError(
+                f'No data returned. Is {contract.upper()} a valid contract?'
+            )
+        if not unix:
+            ser.ts = pd.to_datetime(ser.ts)
+        ser = ser.rename(index={'ts': 'lastTrade'})
+        return ser
 
     def current_funding_rate(self, symbol):
         """Obtain current funding rate details"""
@@ -83,7 +133,7 @@ class FuturesClient(BaseClient):
         ser.iloc[1:] = ser.iloc[1:].astype(float)
         return ser
 
-    def get_server_time(self, format:str=None, unix=True) -> int:
+    def get_server_time(self, unix=True) -> int:
         """Return server time in UTC time to millisecond granularity
 
         Notes
@@ -114,6 +164,37 @@ class FuturesClient(BaseClient):
             )
         return resp
 
+    def get_trade_history(self, contract:str, unix=False, ascending:bool=False) -> pd.DataFrame:
+        """Query API for most recent 100 filled trades for target pair
+
+        Parameters
+        ----------
+        contract : str 
+            Target currency pair to query (e.g., XBTUSDM)
+        unix : bool, optional
+            If `unix=False` [default], DataFrame index will be returned as datetimes. Else,
+            index will be returned as unix epochs with millisecond precision.
+        ascending : bool, optional
+            Reverse sorting order of returned dataframe (default sorts newest to oldest)
+        
+        Returns
+        -------
+        DataFrame
+            Returns pandas Dataframe with filled trade details keyed to timestamp
+        """
+        path = f'trade/history?symbol={contract.upper()}'
+        resp = self._request('get', path)
+        if not resp['data']:
+            raise KucoinResponseError(
+                f'No data returned. Is {contract.upper()} a valid symbol?'
+            )
+        df = pd.DataFrame(resp['data']).set_index('ts')
+        df[['size', 'price']] = df[['size', 'price']].astype(float)
+        if not unix:
+            df.index = pd.to_datetime(df.index)
+        df.index = df.index.rename('time')
+        return df.sort_index(ascending=ascending)
+
     def server_status(self) -> dict:
         """Get KuCoin service stats (open, closed, cancelonly)"""
         path = "status"
@@ -121,28 +202,37 @@ class FuturesClient(BaseClient):
         return resp["data"]
 
     def ohlcv(
-        self, symbols:str, start:dt.datetime or str, end:dt.datetime or str=None, 
-        interval:str="1day", ascending:bool=True,
+        self, contracts:str, start:dt.datetime or str=None, end:dt.datetime or str=None, 
+        interval:str="1day", ascending:bool=True, warn:bool=True,
     ):
         """Obtain historic OHLCV price data for futures contract
         
         Parameters
         ----------
-        symbols : str or list
-
-        start : str or datetime, optional
-
-        end : str or datetime, optional
-
+        contracts : str or list
+            Futures contract or list of contracts (e.g., XBTUSDT)
+        start : str or datetime.datetime
+            Earliest time for queried date range. May be given either as a datetime object
+            or string. String format may include hours/minutes/seconds or may not
+            String format examples: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+        end : None or str or datetime.datetime, optional
+            Ending date for queried date range. This parameter has the same
+            formatting rules and flexibility of param `begin`. If left unspecified, end 
+            will default to the current UTC date and time stamp.
         interval : str, optional
             Provide interval granularity for returned data. Default granularity is 1 day. 
             All possible intervals: `["1min", "5min", "15min", "30min", "1hour", 
             "2hour", "4hour", "8hour", "12hour", "1day", "1week"]`
+        ascending : bool, optional
+            If `ascending=True` [default], returned DataFrame will be in standard order. If `False`,
+            data is returned in reverse chronological order.
+        warn : bool, optiona
+            Toggle whether function warns user about excessive API calls
         
         Returns
         -------
         DataFrame
-            Return pandas dataframe with datetime index in ascending order.
+            Return pandas dataframe with datetime index in `ascending` order.
         """
         granularity = {
             "1min": 1, "5min": 5, "15min": 15, "30min": 30, "1hour": 60, "2hour": 120,
@@ -152,18 +242,87 @@ class FuturesClient(BaseClient):
         base_path = 'kline/query'
         interval_granularity = granularity[interval]
 
-        start = _parse_date(start) if isinstance(start, str) else start
-        end = _parse_date(end) if isinstance(end, str) else dt.datetime.utcnow()
+        if start:
+            start = _parse_date(start) if isinstance(start, str) else start
+        if end:
+            end = _parse_date(end) if isinstance(end, str) else dt.datetime.utcnow()
 
-        symbols = [symbols] if not isinstance(symbols, list) else symbols
-        symbols = ["."+symbol for symbol in symbols if not symbol.startswith(".")]
-        symbols = [symbol.upper() for symbol in symbols]
+        contracts = self.__format_contract_list(contracts)
 
-        for symbol in symbols:
+        responses = []
+
+        unix_end_ts = int(time.mktime(end.timetuple())) * 1000
+        unix_start_ts = int(time.mktime(start.timetuple())) * 1000 if start else None
+
+        for symbol in contracts:
             path = (
                 base_path + 
                 f"?symbol={symbol}" + 
                 f"&granularity={interval_granularity}" +
-                f"" +
-                f""
+                f"&to={unix_end_ts}"
             )
+            if unix_start_ts:
+                path += f"&from={unix_start_ts}"
+            resp = self._request('get', path)
+            try:
+                df = pd.DataFrame(resp['data'], columns=[
+                    'time', 'open', 'high', 'low', 'close', 'volume',
+                ]).set_index('time')
+                df.index = pd.to_datetime(df.index, unit='ms')
+            except KeyError:
+                KucoinResponseError(
+                    f'No data returned. Is {symbol} a valid contract?'
+                )
+            df = df[df.index.astype(np.int64) // 10**9 < unix_end_ts]
+            responses.append(df)
+        
+        if len(responses) > 1:
+            df = pd.concat(responses, axis=1, keys=contracts)
+        else:
+            df = responses[0]
+        
+        return df.sort_index(ascending=ascending)
+
+    def orderbook(self, contract, depth=None):
+        pass
+
+    def interest_rates(self, contract):
+
+        df = []
+        path = f'interest/query?symbol={contract}'
+        resp = self._request('get', path)
+        df.append(resp)
+        if resp['data']['hasMore']:
+            path = f'interest/query?symbol={contract}&forward=true'
+            resp = self._request('get', path)
+            df.append(resp)
+        return df
+
+    def indices(self):
+        pass
+
+    def premium_index(self, contract:str):
+        """Obtain list of premium indices for target contract"""
+        path = f'premium/query?symbol={contract}'
+        resp = self._request('get', path)
+        return resp
+
+    def funding_rate(self, contract:str, unix:bool=False) -> pd.Series:
+        """Obtain current funding rate for specified futures contract"""
+        path = f'funding-rate/{contract}/current'
+        resp = self._request('get', path)
+        try:
+            ser = pd.Series(resp['data'])
+        except KeyError:
+            raise KucoinResponseError(
+                f'No data returned. Is {contract} a valid contract?'
+            )
+        if not unix:
+            ser.timePoint = pd.to_datetime(ser.timePoint, unit='ms')
+        ser = ser.rename(index={
+            'timePoint': 'time',
+            'value': 'funding_rate',
+            'predictedValue': 'predicted_rate'
+        })
+        ser.name = contract
+        return ser
