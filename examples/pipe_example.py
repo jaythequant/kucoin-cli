@@ -14,7 +14,7 @@ Database created will look like this ......
 """
 
 # Import our modules
-from kucoincli.pipe import pipeline
+import kucoincli.pipe as pipe
 from sqlalchemy import create_engine
 import logging
 
@@ -38,7 +38,7 @@ END = "2022-05-01"
 INTERVAL = "1min"
 
 # Now let's open up our pipeline ...
-pipeline(
+pipe.pipeline(
     tickers=TICKER,     # Tickers to query OHLCV data for
     engine=engine,      # Engine to run our database
     interval=INTERVAL,  # Interval at which to obtain OHLCV

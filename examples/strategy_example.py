@@ -244,8 +244,8 @@ class SMACross(Client):
             time.sleep(60*60) 
 
 
-if __name__ == '__main__':
-
+def main():
+    """Run SMA Cross strategy"""
     # Your own credentials here 
     # Don't do this in real code. Use python-dotenv or add the variable to PATH
     API_KEY = 'api_key' 
@@ -273,3 +273,7 @@ if __name__ == '__main__':
 
     # Finally, we will call the execute function and let the strategy go about its business
     strategy.execute()
+
+
+if __name__ == '__main__':
+    main()

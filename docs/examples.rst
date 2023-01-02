@@ -1,9 +1,14 @@
 Examples
 ========
 
-I've included several examples here highlighting the three main uses for the library: (1) Data analysis, (2) Building and maintaining datasets, and (3) Leveraging statistical research into 
-algorithmic trading systems. The GitHub distribution of this package includes an `examples` folder containing the `.py` / `.ipynb` files for each example. Hopefully after browsing these
-examples you'll feel confident enough yourself to get to work on your own research.
+I've included several examples here highlighting the three main uses for the library: 
+
+    1. Data analysis
+    2. Building and maintaining datasets
+    3. Deploying algorithmic trading systems 
+
+The GitHub distribution of this package includes an `examples` folder containing the Python or Jupyter Notebook files for each example. Hopefully, after browsing these
+examples, you'll feel confident enough to get to work on your own research.
 
 Basics of Data Analysis
 -----------------------
@@ -20,41 +25,109 @@ deeper detail. Note that this example was built on KCI version 1.4.6 or greater.
 Data Pipeline Setup
 -------------------
 
-Below is a simple code example describing how to setup a SQL database using `kucoincli.pipe` module. In `kucoin-cli` distributions later 
-than 1.0.0, this code is included in the examples folder labels `pipe_example.py`.
+One of the novel features of Kucoin-Cli is its in-built data acquisition pipeline. Leveraging the `kucoincli.pipe` module, users can acquire and store large amounts of OHLC(V) data in their
+own SQL database. Piping data from KuCoin's server to your own is as simple as importing the module and calling a one-line function. Below, I will outline the most basic use case
+for the `pipe` module and review the data that it will acquire. After reviewing this how-to, user's can find and test the program using the `pipe_example.py` file in the `examples`
+folder.
+
+First, what is OHLCV data? Let's get an understanding of what data we will be storing. OHLCV data, often called candelstick data, represents the core summary statistics for an asset over a 
+discrete time interval. OHLCV itself stands for 'Open', 'High', 'Low', 'Close' and 'Volume' and, by-and-large, represents the classic data needed to perform backtesting and statistical analysis
+on trading ideas. KuCoin provides an additional data point beyond classic OHLCV called 'Turnover'. Turnover represents 'Close' multiplied by 'Volume', essentially indicating volume denoted in 
+the trading pair's quote currency (i.e., the denominator of the pair). Below is a short summary of what each column represents:
+
+* `Open`: Execution price of initial trade during the period.
+* `High`: Highest filled trade execution price during the period.
+* `Low`: Lowest filled trade execution price during the period.
+* `Close`: Execution price of final trade during period.
+* `Volume`: Amount of base currency exchanged.
+* `Turnover`: Amount of quote currency exchanged. Turnover is equivalent to Close x Volume.
+
+How does the `pipe` module accomplish data acquisition? KCI's `pipe` module wraps the `ohlcv` function found in the `client` module adding on top data validation features, a SQL entry point,
+and robust error handling to protect against server time outs. User's are encouraged to explore `kucoincli.client.ohlcv` to get a better understanding of the data they will be acquiring.
+Essentially, `pipe`'s core function of `pipeline` takes a specified timeline and asset set and repeatedly calls Kucoin's OHLCV REST endpoint while upload resulting data to a target SQL 
+database.
+
+How will tables appear in the SQL database?
+
+Assuming a true SQL solution is in place (e.g., mySQL or Postgres), the user will need to first create the database and schema. If the database and schema already exist, users may add tables to,
+or append to tables in, the pre-existing schema. Within the schema, piped data will be added, table-by-table, as each asset is iterated over. Tables will be named as all lowercase 
+with special characters removed. E.g., BTC-USDT data would generate (or append to) a table titled `btcusdt` in the target schema. The resulting table will look like this:
+
++----------+-------+-------+-------+-------+-------------+-----------+
+|   time   |  open | close |  high |  low  |   volume    | turnover  |
++==========+=======+=======+=======+=======+=============+===========+
+|2022-01-01|1001.51|1002.21|1008.32| 999.43|8.14505485512| 8157.3490 |
++----------+-------+-------+-------+-------+-------------+-----------+
+|2022-01-02| 999.49|1000.80|1004.89| 995.32|9.15848158419| 9153.8091 |
++----------+-------+-------+-------+-------+-------------+-----------+
+
+If, alternatively, the user is working with a SQLite solution, the pipeline will generate a `.db` file when none exists or append to an existing `.db` file.
+
+There is some nuance in SQL database implementation that is outside of the scope of this example. In the closing remarks below, I've linked several resources where reader's can learn more
+about the differences in SQLite, Postgres, and mySQL as well as the documentation for the SQLalchemy library which acts as the interpreter between Python and a SQL database. SQLachemy is the 
+ubiquitous framework for interfacing Python into SQL and as such user's will need to familiarize themselves with the tool to fully realize the benefit of this module. 
+
+Before we jump into the code, a final note on SQL solutions: We will be covering a SQLite implementation here as it is much easier to use and setup. In reality, users with 
+aspirations of working with big data will need to explore Postgres or mySQL rather than SQLite as SQLite is rather flimsy and is not a true relational database. The `pipe` module is
+primarily intended to be plugged into true relational databases and may not work as efficiently, or as intended, with SQLite databases. I have had great success with Postgres (psql) in my own 
+projects and encourage readers to setup their own relational database using the resources in the closing remarks *before* loading gigabytes of data onto their machine or cloud.
+
+Without further ado, let's put together a quick and dirty example database using Kucoin-Cli and SQLite.
+
+Step 1. Load the neccesary modules. We will be using SQLalchemy as our SQL interface and, of course, `kucoincli.pipe` as our data pipeline. We're also going to import the logging
+module to give us some quick readouts as we go. For those of you that are not familiar with logging in Python, I highly recommend taking a 5 minute break to read about it `here 
+<https://docs.python.org/3/howto/logging.html>`_.
 
 .. code-block:: python
 
-        """"
         ##### A simple data pipeline using `kucoincli.pipe` module #####
 
-        Database created will look like this ...... 
-
-        +----------+-------+-------+-------+-------+-------------+-----------+
-        |   time   |  open | close |  high |  low  |   volume    | turnover  |
-        +----------+-------+-------+-------+-------+-------------+-----------+
-        |2022-01-01|1001.51|1002.21|1008.32| 999.43|8.14505485512| 8157.3490 |
-        |2022-01-02| 999.49|1000.80|1004.89| 995.32|9.15848158419| 9153.8091 |
-        ...
-        ...
-        ...
-        """
-
         # Import our modules
-        from kucoincli.pipe import pipeline
         from sqlalchemy import create_engine
+        import kucoincli.pipe as pipe
         import logging
+
+
+Step 2. Now that we've imported our modules, we need to establish our database connection. As previously mentioned, establishing SQL connections using SQLalchemy is out of the scope
+of this documentation, but understand that we will hook into our database by creating an *engine* object using the `create_engine` function from the SQLalchemy. For greater detail on
+the process read `this SQLalchemy page <https://docs.sqlalchemy.org/en/20/core/engines.html>`_. For SQLite databases, we simply pass the string `sqlite:///name_of_our_database.db` into
+`create_engine`. For this example, our database name will be `example.db`, but this is, of course, arbitrary.
+
+.. code-block:: python
 
         # Create our sqlite database engine with sqlalchemy.
         # The engine will generate a new database or append
         # to a pre-existing one.
         engine = create_engine("sqlite:///example.db")
 
+Step 3. Let's get some basic logger configurations setup. I won't go into detail on how to adjust these settings as there are plenty of resources available, but understand that this is
+just giving us an "under-the-hood" look at what's going on in our console. For more details see the logger documentation link above.
+
+.. code-block:: python
+
         # Add a logger to see pick up some additional output info
         # To retrieve timeout messages set logging level to DEBUG
         fmt = "%(asctime)s [%(levelname)s] %(module)s :: %(message)s"
         logging.basicConfig(level=logging.INFO, format=fmt)
         logging.getLogger(__name__)
+
+Step 4. Establish the core constants our pipeline will use. Opening a data pipeline requires five data points:
+
+1. `ticker`: Asset of list of assets. The pipeline can take a single asset as a string or a long list of assets. In this example, we will only acquire a single asset, but, in practice, I
+typically acquire price data for all traded assets. A list of all trading pairs on KuCoin can be acquires trivially using `kucoincli.symbols().index`. Note that asset names must be listed
+exactly as specified by KuCoin, i.e. they must be passed with a '-' between the quote and base and in all uppercase (e.g., `BTC-USDT`).
+2. `start`: The earliest date at which to acquire data e.g., `2019-01-01`. Users may pass in a time argument such as `2019-01-01 12:00:00` and can format their argument as either a string
+or a datetime objects. Technically, the `start` argument is optional and, if not passed, the pipeline will automatically query all available historic data. In practice, however, specifying 
+a `start` date is preferred as early days of the exchange are riddled with data inconsistency errors.
+3. `end`: The latest date at which to acquire data. This is the final data or datetime in the range to be queried. User's must specify an end date and may specify it as a string or datetime
+object in the same way as they specify the start argument.
+4. `interval`: Specifies the granularity at which to acquire data (e.g., daily, hourly, or weekly). KuCoin provides a range of intervals: `["1min", "3min", "5min", "15min", "30min", "1hour", 
+"2hour", "4hour", "6hour", "8hour", "12hour", "1day", "1week"]`. All of these intervals are fully supported by the pipeline.
+5. `engine`: We need to pass the engine we created in Step 2 to the pipeline so it knows where to direct the data it acquires.
+
+In the below code block we specify `ticker`, `start`, `end`, and `interval` as constants.
+
+.. code-block:: python
 
         # Setup constants for the pipeline.
         # `pipeline`s are highly configurable 
@@ -64,8 +137,13 @@ than 1.0.0, this code is included in the examples folder labels `pipe_example.py
         END = "2022-05-01"
         INTERVAL = "1min"
 
+Step 5. With our setup complete, we can call the `pipeline` function from `kucoincli.pipe`. Passing our engine object and the relevant constants, a file called `example.db` will generate in
+the current working directory.
+
+.. code-block:: python
+
         # Now let's open up our pipeline ...
-        pipeline(
+        pipe.pipeline(
             tickers=TICKER,     # Tickers to query OHLCV data for
             engine=engine,      # Engine to run our database
             interval=INTERVAL,  # Interval at which to obtain OHLCV
@@ -73,26 +151,23 @@ than 1.0.0, this code is included in the examples folder labels `pipe_example.py
             end=END,            # Latest date to query from
         )
 
-Viola, we have generated a database in as little as few dozen lines of code. Let's briefly review the features of the datebase: This is a SQLite .db file which has now been added to the current
-working directory. The database contains 30 days of OHLC(V) data between April 1st, 2022 and May 1st, 2022 for Bitcoin quoted in Tether at 1 minute granularity. Our database consists of six
-columns: 
+Conclusion:
 
-* `Open`: Execution price of initial trade during the period.
-* `High`: Highest filled trade execution price during the period.
-* `Low`: Lowest filled trade execution price during the period.
-* `Close`: Execution price of final trade during period.
-* `Volume`: Amount of base currency exchanged.
-* `Turnover`: Amount of quote currency exchanged. Turnover is equivalent to Close x Volume.
+In a few simple steps, we have generated a basic SQLite database. Let's briefly review the features of the datebase: This is a SQLite `.db` file which has now been added to the current
+working directory. The database contains 30 days of OHLC(V) data between April 1st, 2022 and May 1st, 2022 for Bitcoin quoted in Tether (i.e., 'BTC-USDT') at 1 minute granularity. 
 
-The `pipeline` function gives us a handy progress bar print out with a timer, but this can be disabled via the `progress_bar` argument should user's prefer a less verbose output.
+The `pipeline` function gives us a handy progress bar with a timer which is especially useful when acquiring very large datasets that may take many hours or even days to download. This 
+feature can, however, be disabled by setting the `progress_bar` argument equal to `False`.
 
-Simple as that, we've laid out the entire pipeline! We now have a permanent SQLite database to draw from for future research. 
+We now have a permanent SQLite database to draw from for future research, but, of course, this is just the tip of the iceberg! User's will need to learn how to use SQLalchemy to retrieve
+their data back into a Python environment and will need to install and setup their own relational database to begin managing larger amounts of related data. See `Further Reading` below for some
+helpful documentation on your continued journey:
 
 .. admonition:: Further Reading
 
     * For information on how to connect Python to your new database see the SQLalchemy documentation (https://docs.sqlalchemy.org/en/14/)
     * For a brief introduction to SQLite check out SQLite's documentation (https://www.sqlite.org/docs.html)
-    * For a much more heavy-duty database solution check out my preferred SQL database language, Postgres (https://www.postgresql.org/docs/)
+    * For a heavy-duty database solution check out my preferred version of SQL, Postgres (https://www.postgresql.org/docs/)
 
 Deploying An Algorithm
 ----------------------
@@ -126,7 +201,7 @@ Now that we've created our Strategy class, we are ready to load up the strategy 
 .. code-block:: python
 
     # Your own credentials here 
-    # Don't do this in real code. Use python-dotenv or add the variable to PATH
+    # Don't do this in real code. Use python-dotenv or add the argument to PATH
     API_KEY = 'api_key' 
     API_SECRET = 'api_secret' 
     API_PASSPHRASE = 'api_passphrase' 
@@ -153,6 +228,11 @@ Now that we've created our Strategy class, we are ready to load up the strategy 
     # Finally, we will call the execute function and let the strategy go about its business
     strategy.execute()
 
-Our strategy will generate signals and execute trades till we kill the process or it till it runs into an execution error of some sort. While this strategy may not be valid, I hope it can give
+Our strategy will generate signals and execute trades till we kill the process or until it runs into an execution error of some sort. While this strategy may not be valid, I hope it can give
 you, the reader, the basic understanding of how to convert your theorized strategy into a fully automated system. Developing this library and the strategies that I am currently running has been
 very meaninful to me and I hope it can be meaningful to you as well. Best of luck.
+
+Wrapping Up
+-----------
+
+
