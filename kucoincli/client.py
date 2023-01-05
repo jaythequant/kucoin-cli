@@ -83,7 +83,7 @@ class BaseClient(Socket):
             response = self.session.request(method, uri, data=payload)
         except requests.exceptions.ReadTimeout:
             # Error is raised during extended scraping sessions (requires long time out)
-            time.time(600)
+            time.sleep(600)
             response = self.session.request(method, uri, data=payload)
 
         if response.status_code == 200:
@@ -1302,13 +1302,25 @@ class Client(BaseClient):
             across all borrowings for `currency` in `priority` order.
         priority : str, optional
             Specify how to prioritize debt repayment.
+
             - `highest`: [default] Repay highest interest rate loans first
             - `soonest`: Repay loans with shortest remaining term first 
 
         Returns
         -------
         dict
-            Returns JSON dictionary with repayment confirmation and details.
+            Returns JSON dictionary with repayment confirmation and details. Note that if `size=None`,
+            the 'size' field in the json response will be autofilled to the entire available balance at
+            the time of repayment.
+
+            {
+                'code': '200000',
+                'data': {
+                    'currency': 'BTC', 
+                    'size': 5.0002, 
+                    'sequence': 'HIGHEST_RATE_FIRST'
+                }
+            }
         """
         if mode == "cross":
             margin_mode = "margin"
@@ -1350,6 +1362,10 @@ class Client(BaseClient):
                 else:
                     data["seqStrategy"] = "RECENTLY_EXPIRE_FIRST"
         resp = self._request("post", path, signed=True, data=data)
+        if resp['code'] == '200000' and resp['data']:
+            resp['data'].update(data)            
+        else:
+            resp['data'] = data
         return resp
 
     def get_margin_history(
@@ -2089,6 +2105,9 @@ class Client(BaseClient):
             res.sort_values('createdAt', inplace=True)
             end += dt.timedelta(days=1)
             res = res.loc[:end]
+        
+        avg_price = res['dealFunds'].astype(float) / res['dealSize'].astype(float)
+        res.insert(6, 'avgPrice', avg_price) # Add average execution price
 
         if id:
             id = [id] if isinstance(id, str) else id
@@ -2109,13 +2128,12 @@ class Client(BaseClient):
             res = res[res['side'] == side]
         if consolidated:
             consol_columns = [
-                'symbol', 'type', 'side', 'price', 'size', 
+                'symbol', 'type', 'side', 'price', 'avgPrice', 'size', 
                 'dealFunds', 'dealSize', 'fee'
             ]
             res = res[consol_columns]
         float_cols = ['price', 'size', 'dealFunds', 'dealSize','fee']
         res[float_cols] = res[float_cols].astype(float)
-        # somehow duplicates are getting into the response...
         return res.drop_duplicates().sort_index(ascending=False)
 
     def get_borrow_order(self, id):

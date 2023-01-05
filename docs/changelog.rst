@@ -3,6 +3,26 @@ Changelog
 =========
 
 -----
+1.4.7
+-----
+Release Date: Unreleased
+
+Core functionality of the API is complete. The dev branch contains the framework for the futures API which will eventually be merged into the main branch. As such, I will turning focus to
+documentation with extended examples and detailed walkthroughs. Visit the Examples page on readthedocs to get some implementation tips on how to use this library, then check out the `example`
+folder on Github to try the example scripts out for yourself.
+
+Quality of Life
+^^^^^^^^^^^^^^^
+* `order_history`: Added a calculated column called `avgPrice`. `avgPrice` is the average executed price calculated as `dealSize` / `dealFunds`. If the order did not execute, `avgPrice=NaN`.
+* `repay`: Much like `order` and `borrow`, `repay` now provides improved responses. Core return data for responses is still intacted (so no existing programs will break). See docstrings for
+  further details and an example output.
+
+Bug Fixes
+^^^^^^^^^
+* During super-extended webscraping sessions (those put on by the `pipe` module), an error could occur in which the program was intended to sleep for 10 minutes, but failed to do so. This
+  has now been corrected.
+
+-----
 1.4.6
 -----
 Release Date: 2022-10-28

@@ -1,6 +1,18 @@
 Examples
 ========
 
+I've included three example highlighting the three main uses for the library: (1) Data analysis, (2) Building and maintaining datasets, and (3) Leverage statistical research into algorithmic
+trading systems. The GitHub distribution of this package includes an `examples` folder containing the `.py` files for each of the three below examples.
+
+A Quick Data Example
+--------------------
+
+At the core of Kucoin-Cli, or KCI, is data acquisition functionality. While there are numerous other REST wrappers and order execution/management libraries available, none match the level of 
+out-of-box detail paid by KCI. Below we will go through a quick code snippet showcasing some of the more important research functions the library has to offer as well as conducting a quick
+analysis on live data. I strongly encourage readers to skim the below code block and notes, then visit the `examples` folder where there is a Jupyter Notebook containing the same code in
+deeper detail. Note that this example was built on KCI version 1.4.6 or greater. Some functions may not run on older versions of the library.
+
+
 Data Pipeline Setup
 -------------------
 
@@ -68,3 +80,8 @@ than 1.0.0, this code is included in the examples folder labels `pipe_example.py
         ## SQLite database to draw from for future research. See the SQLalchemy   ##  
         ## documentation (https://docs.sqlalchemy.org/en/14/) for details on how  ##
         ## to interact with our new database.                                     ##
+
+
+Deploying An algorithms
+-----------------------
+
