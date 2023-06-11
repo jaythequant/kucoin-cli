@@ -19,12 +19,12 @@ Why use this library over `python-kucoin <https://github.com/sammchardy/python-k
 
 This package was written with an eye towards data science and quantitative trading strategies. Specifically designed for fast, efficient data acquisition and high complexity 
 trades such as HFT, market-making, and long-short strategies. Wherever possible, endpoints have been neatly wrapped to pandas DataFrames with key data 
-acquisition enpoints thoughtfully constructed with rich configurability reducing time needed to clean and filter data. Trading functions are
+acquisition endpoints thoughtfully constructed with rich configurability reducing time needed to clean and filter data. Trading functions are
 explicitly geared towards simplicity with seamless margin trade integration. Of special note, OHLCV acquisition from the KuCoin REST API has been overhauled
 to enable the user to query multiple assets over extended time periods despite the standard enpoint's limitations of a single asset with a max 1500 bars of historic data. For large scale
 ML projects, leverage the ``kucoincli.pipe`` module for a one-line function capable of piping large amounts of OHLCV data directly into the user's SQL database solution.
 
-* Automate the generation of a enormous SQL databases with ``kucoincli.pipe``
+* Automate the generation of enormous SQL databases with ``kucoincli.pipe``
 * Take complex trading algorithms live via websockets using ``kucoincli.socket`` [work in progress]
 * Quickly obtain, clean, and organize large amounts of data for use in RL/ML models with ``kucoincli.client``
 
@@ -44,13 +44,13 @@ Features
 * One-line database pipeline. Open a high stability pipe from the KuCoin OHLC(V) endpoint to your SQL database
 
   - Automatically creates database or adds to pre-existing db
-  - Capable of handling multi-day data acqusitions sessions through dynamic timeout mechanism
+  - Capable of handling multi-day data acqusition sessions through dynamic timeout mechanism
   - Take a look at a pre-built example in the ``examples`` folder available at `my github <https://github.com/jaythequant/kucoin-cli>`_
   
 * Highly configurable data acquisition endpoints
 
   - Spend less time cleaning and managing data
-  - Checkout ``.ohlcv``, ``.orderbook``, ``.symbols``, and ``.all_tickers``
+  - Checkout ``.ohlcv``, ``.orderbook``, ``.symbols``, and ``.all_tickers`` for examples
   
 * Access to 99%+ of KuCoin REST and Websocket endpoints
 * Seamless order management between Spot and Margin markets
