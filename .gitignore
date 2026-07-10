@@ -8,3 +8,5 @@ dist/
 .vscode
 .DS_Store
 *.ipynb
+data_archive/
+CLAUDE.md
